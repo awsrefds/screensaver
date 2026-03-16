@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>screensaver</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html, body { width:100%; height:100%; overflow:hidden; background:#0d1a28; cursor:none; }
+canvas { position:fixed; inset:0; display:block; }
+
+#ui {
+  position: fixed; bottom: 2.6rem; left: 50%; transform: translateX(-50%);
+  z-index: 20; text-align: center;
+  font-family: 'Cormorant Garamond', serif; font-weight: 300;
+  user-select: none; white-space: nowrap;
+}
+#mode-row { display:flex; align-items:center; justify-content:center; gap:1.4rem; margin-bottom:5px; }
+.mode-btn { font-size:10px; letter-spacing:.5em; text-transform:lowercase; cursor:pointer; padding:3px 0; transition:color .4s; color:rgba(160,185,210,.14); }
+.mode-btn:hover { color:rgba(160,185,210,.42); }
+.mode-btn.active { color:rgba(160,185,210,.45); }
+.mode-sep { font-size:9px; color:rgba(160,185,210,.08); letter-spacing:0; }
+#display { font-size:15px; letter-spacing:.5em; color:rgba(160,185,210,.28); cursor:pointer; transition:color .4s; padding:2px 0; min-height:26px; display:block; }
+#display:hover { color:rgba(160,185,210,.52); }
+#display.active-time { color:rgba(160,185,210,.42); }
+#display.done { animation:blink 1.3s ease-in-out infinite; }
+#hint { font-size:7.5px; letter-spacing:.45em; color:rgba(160,185,210,.06); margin-top:3px; transition:color .4s; text-transform:lowercase; }
+#ui:hover #hint { color:rgba(160,185,210,.22); }
+#setter { display:none; flex-direction:column; align-items:center; gap:5px; margin-bottom:4px; }
+#setter.open { display:flex; }
+#setter label { font-size:8px; letter-spacing:.45em; color:rgba(160,185,210,.28); text-transform:lowercase; }
+#mins { background:transparent; border:none; border-bottom:1px solid rgba(160,185,210,.18); color:rgba(160,185,210,.62); font-family:'Cormorant Garamond',serif; font-weight:300; font-size:26px; letter-spacing:.35em; width:90px; text-align:center; outline:none; padding:2px 0; }
+#mins::placeholder { color:rgba(160,185,210,.1); }
+#setter-sub { font-size:7px; letter-spacing:.4em; color:rgba(160,185,210,.14); }
+#popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:50; pointer-events:none; opacity:0; transition:opacity 2s ease, background 2s ease; background:rgba(13,26,40,0); }
+#popup.show { pointer-events:auto; opacity:1; background:rgba(13,26,40,.6); }
+#popup-inner { text-align:center; font-family:'Cormorant Garamond',serif; font-weight:300; }
+#popup-msg { font-size:clamp(1.5rem,3.5vw,2.4rem); letter-spacing:.14em; color:rgba(180,200,220,.65); line-height:1.65; }
+#popup-dismiss { margin-top:1.8rem; font-size:8px; letter-spacing:.5em; color:rgba(160,185,210,.18); cursor:pointer; transition:color .4s; text-transform:lowercase; }
+#popup-dismiss:hover { color:rgba(160,185,210,.5); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.12} }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="ui">
+  <div id="mode-row">
+    <span class="mode-btn active" id="btn-cd">countdown</span>
+    <span class="mode-sep">/</span>
+    <span class="mode-btn" id="btn-sw">timer</span>
+  </div>
+  <div id="setter">
+    <label>minutes</label>
+    <input id="mins" type="number" min="1" max="999" placeholder="00" autocomplete="off">
+    <div id="setter-sub">enter to start · esc to cancel</div>
+  </div>
+  <div id="display">—</div>
+  <div id="hint">click to set</div>
+</div>
+
+<div id="popup">
+  <div id="popup-inner">
+    <div id="popup-msg">well done<br>you deserve a rest</div>
+    <div id="popup-dismiss">dismiss</div>
+  </div>
+</div>
+
+<script>
+// ─── canvas ───────────────────────────────────────────────
+const C = document.getElementById('c');
+const ctx = C.getContext('2d');
+let W, H;
+function resize(){ W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
+resize();
+window.addEventListener('resize', resize);
+
+// ─── catmull-rom spline ───────────────────────────────────
+function spline(pts){
+  if(pts.length < 2) return;
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for(let i = 0; i < pts.length - 1; i++){
+    const p0 = pts[Math.max(i-1, 0)];
+    const p1 = pts[i];
+    const p2 = pts[i+1];
+    const p3 = pts[Math.min(i+2, pts.length-1)];
+    for(let t = 0; t <= 1; t += 0.04){
+      const t2=t*t, t3=t2*t;
+      const x=0.5*((2*p1[0])+(-p0[0]+p2[0])*t+(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2+(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3);
+      const y=0.5*((2*p1[1])+(-p0[1]+p2[1])*t+(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2+(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3);
+      ctx.lineTo(x, y);
+    }
+  }
+  ctx.lineTo(pts[pts.length-1][0], pts[pts.length-1][1]);
+}
+
+// ─── DRAW ────────────────────────────────────────────────
+// All coords are fractions of W/H, pixel-traced from reference.
+//
+// COLOUR PALETTE (matched from reference):
+//   Sky:             #1a2e48  top → #253a54 horizon
+//   Mountains:       #192840  (barely darker than sky)
+//   Upper catchlight:#67808e  (the bright band — lightest dune tone)
+//   Lower catchlight:#54606e  (second band — medium-light)
+//   Dune base:       #2c3d50  (background dune face)
+//   Shadow face:     #101c2a  (very dark navy)
+//   Foreground:      #0d1826  (near-black)
+//   Ground:          #080e1a  (darkest)
+//
+// STRUCTURE (back-to-front):
+//   1. Sky
+//   2. Left mountains
+//   3. Right mountains
+//   4. Dune base (entire dune silhouette, darkest dune tone)
+//   5. Upper catchlight band (clipped to dune)
+//   6. Lower catchlight band (clipped to dune)
+//   7. Shadow face (overlaid from crest rightward)
+//   8. Foreground mass
+//   9. Ground
+//
+// CREST: x=63.5%, y=27.8% — with wave-hook on shadow side
+// SECONDARY HUMP: x=45.5%, y=30.8%
+// LEFT SKYLINE at x=0: y=46.8%
+
+function draw(ts){
+  const t = ts * 0.001;
+  // Ultra-subtle per-point breath — amplitude 0.10% of screen
+  const A = 0.001;
+  function b(ph, sp){ return Math.sin(t * sp + ph) * A * H; }
+
+  ctx.clearRect(0, 0, W, H);
+
+  // ══════════════════════════════════════════════════════
+  //  1. SKY
+  // ══════════════════════════════════════════════════════
+  {
+    const g = ctx.createLinearGradient(0, 0, 0, H * 0.50);
+    g.addColorStop(0,    '#152030');
+    g.addColorStop(0.55, '#1d2e44');
+    g.addColorStop(1,    '#253a54');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  2. LEFT MOUNTAINS
+  //  Jagged ridge x=0–21%, barely darker than sky
+  // ══════════════════════════════════════════════════════
+  {
+    const p = [
+      [-W*.01,  H*.498 + b(0.0,.022)],
+      [ W*.018, H*.460 + b(0.2,.020)],
+      [ W*.038, H*.474 + b(0.4,.022)],
+      [ W*.058, H*.448 + b(0.6,.020)],
+      [ W*.078, H*.464 + b(0.8,.022)],
+      [ W*.098, H*.444 + b(1.0,.020)],
+      [ W*.120, H*.458 + b(1.2,.022)],
+      [ W*.144, H*.446 + b(1.4,.020)],
+      [ W*.168, H*.460 + b(1.6,.022)],
+      [ W*.194, H*.450 + b(1.8,.020)],
+      [ W*.218, H*.464 + b(2.0,.022)],
+    ];
+    ctx.beginPath(); spline(p);
+    ctx.lineTo(W*.218, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
+    ctx.fillStyle = '#192840'; ctx.fill();
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  3. RIGHT MOUNTAINS
+  //  x=73–100%, same tone
+  // ══════════════════════════════════════════════════════
+  {
+    const p = [
+      [ W*.728, H*.470 + b(3.0,.021)],
+      [ W*.754, H*.450 + b(3.2,.019)],
+      [ W*.778, H*.462 + b(3.4,.021)],
+      [ W*.802, H*.440 + b(3.6,.019)],
+      [ W*.826, H*.454 + b(3.8,.021)],
+      [ W*.850, H*.444 + b(4.0,.019)],
+      [ W*.876, H*.456 + b(4.2,.021)],
+      [ W*.904, H*.446 + b(4.4,.019)],
+      [ W*.934, H*.458 + b(4.6,.021)],
+      [ W*.966, H*.448 + b(4.8,.019)],
+      [ W*1.01, H*.460],
+    ];
+    ctx.beginPath(); spline(p);
+    ctx.lineTo(W*1.01, H+2); ctx.lineTo(W*.728, H+2); ctx.closePath();
+    ctx.fillStyle = '#192840'; ctx.fill();
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  4. DUNE BASE
+  //  Entire dune silhouette — dark background tone.
+  //
+  //  SKYLINE (dune upper silhouette against sky):
+  //   Starts at left edge y=46.8%, rises to secondary hump
+  //   (45.5%, 30.8%), dips slightly to (52%, 29.0%), then
+  //   rises sharply to main peak (63.5%, 27.8%).
+  //   Shadow side drops steeply right with wave-hook.
+  // ══════════════════════════════════════════════════════
+  const CX = W*.635 + Math.sin(t*.011+.5)*A*W*.3;
+  const CY = H*.278 + b(.5,.011);
+
+  // Full dune skyline — both lit side and shadow side
+  const skyline = [
+    [-W*.01,  H*.468 + b(1.0,.013)],
+    [ W*.07,  H*.432 + b(1.1,.012)],
+    [ W*.15,  H*.394 + b(1.2,.013)],
+    [ W*.23,  H*.358 + b(1.3,.012)],
+    [ W*.31,  H*.328 + b(1.4,.013)],
+    [ W*.39,  H*.312 + b(1.5,.012)],
+    [ W*.455, H*.308 + b(1.6,.013)], // ← secondary hump peak
+    [ W*.50,  H*.295 + b(1.7,.012)], // slight dip
+    [ W*.56,  H*.284 + b(1.8,.013)], // rising toward main peak
+    [ CX,      CY ],                  // ← MAIN PEAK (wave crest)
+    // shadow side — wave-hook: slight left-overhang then drops right
+    [ W*.648, H*.276 + b(1.9,.012)], // hook: moves slightly right at same height
+    [ W*.660, H*.278 + b(2.0,.013)], // inflection
+    [ W*.678, H*.294 + b(2.1,.012)], // begins dropping
+    [ W*.710, H*.328 + b(2.2,.013)],
+    [ W*.748, H*.370 + b(2.3,.012)],
+    [ W*.792, H*.418 + b(2.4,.013)],
+    [ W*.840, H*.466 + b(2.5,.012)],
+    [ W*.892, H*.516 + b(2.6,.013)],
+    [ W*.946, H*.560 + b(2.7,.012)],
+    [ W*1.02, H*.606 + b(2.8,.011)],
+  ];
+
+  {
+    ctx.beginPath(); spline(skyline);
+    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
+    ctx.fillStyle = '#2c3d50'; ctx.fill();
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  5. UPPER CATCHLIGHT BAND
+  //
+  //  Bounded shape: TOP edge = dune skyline, BOTTOM edge =
+  //  a parallel curve below it. Fills the upper portion of
+  //  the lit face. Tapers from left (widest) to crest (point).
+  //
+  //  At left edge (x=0):  top y=0.468, bottom y=0.556  (gap=8.8%)
+  //  At secondary hump:   top y=0.308, bottom y=0.348  (gap=4.0%)
+  //  Terminates at crest: (CX, CY)
+  // ══════════════════════════════════════════════════════
+  {
+    // Bottom edge of upper catchlight
+    const botEdge = [
+      [-W*.01,  H*.556 + b(5.0,.012)],
+      [ W*.07,  H*.514 + b(5.1,.011)],
+      [ W*.15,  H*.472 + b(5.2,.012)],
+      [ W*.23,  H*.432 + b(5.3,.011)],
+      [ W*.31,  H*.400 + b(5.4,.012)],
+      [ W*.39,  H*.378 + b(5.5,.011)],
+      [ W*.455, H*.355 + b(5.6,.012)], // near secondary hump
+      [ W*.51,  H*.340 + b(5.7,.011)],
+      [ W*.57,  H*.326 + b(5.8,.012)],
+      [ CX,      CY ],                  // converges to crest
+    ];
+
+    ctx.save();
+    // Clip to dune silhouette
+    ctx.beginPath(); spline(skyline);
+    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
+    ctx.clip();
+
+    ctx.beginPath();
+    spline(skyline.slice(0, 10)); // lit side only (up to crest)
+    ctx.lineTo(CX, CY);
+    spline([...botEdge].reverse());
+    ctx.closePath();
+
+    ctx.fillStyle = '#67808e';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  6. LOWER CATCHLIGHT BAND
+  //
+  //  Second band below the upper one — slightly darker.
+  //  TOP edge = bottom edge of upper catchlight.
+  //  BOTTOM edge runs lower-parallel, terminates with
+  //  a smooth rounded tail at approx (60%, 44%).
+  //
+  //  At left edge:  top y=0.556, bottom y=0.648  (gap=9.2%)
+  //  Tapers to rounded point at ~(0.605, 0.435)
+  // ══════════════════════════════════════════════════════
+  {
+    // Top edge of lower band = bottom edge of upper band
+    const topEdge = [
+      [-W*.01,  H*.556 + b(5.0,.012)],
+      [ W*.07,  H*.514 + b(5.1,.011)],
+      [ W*.15,  H*.472 + b(5.2,.012)],
+      [ W*.23,  H*.432 + b(5.3,.011)],
+      [ W*.31,  H*.400 + b(5.4,.012)],
+      [ W*.39,  H*.378 + b(5.5,.011)],
+      [ W*.455, H*.355 + b(5.6,.012)],
+      [ W*.51,  H*.340 + b(5.7,.011)],
+      [ W*.57,  H*.326 + b(5.8,.012)],
+      [ W*.605, H*.380 + b(5.9,.012)], // curves DOWN here — the rounded turn
+      [ W*.590, H*.432 + b(6.0,.011)], // turning around the tail
+    ];
+
+    // Bottom edge of lower band
+    const botEdge2 = [
+      [-W*.01,  H*.648 + b(6.1,.011)],
+      [ W*.07,  H*.602 + b(6.2,.010)],
+      [ W*.15,  H*.560 + b(6.3,.011)],
+      [ W*.23,  H*.524 + b(6.4,.010)],
+      [ W*.31,  H*.494 + b(6.5,.011)],
+      [ W*.39,  H*.470 + b(6.6,.010)],
+      [ W*.455, H*.452 + b(6.7,.011)],
+      [ W*.51,  H*.440 + b(6.8,.010)],
+      [ W*.555, H*.434 + b(6.9,.011)],
+      [ W*.590, H*.432 + b(6.0,.011)], // meets at rounded tail
+    ];
+
+    ctx.save();
+    ctx.beginPath(); spline(skyline);
+    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
+    ctx.clip();
+
+    ctx.beginPath();
+    spline(topEdge);
+    spline([...botEdge2].reverse());
+    ctx.closePath();
+
+    ctx.fillStyle = '#54606e';
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  7. SHADOW FACE
+  //  Very dark navy from crest rightward.
+  //  Left boundary = shadow-side of skyline (wave-hook shape).
+  // ══════════════════════════════════════════════════════
+  {
+    const shadowSide = skyline.slice(9); // from CX,CY onward
+    ctx.beginPath(); spline(shadowSide);
+    ctx.lineTo(W*1.02, H+2); ctx.lineTo(CX, H+2); ctx.closePath();
+    const g = ctx.createLinearGradient(CX, CY, W*.94, H*.60);
+    g.addColorStop(0,   '#141e2e');
+    g.addColorStop(0.5, '#0e1826');
+    g.addColorStop(1,   '#09101e');
+    ctx.fillStyle = g; ctx.fill();
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  8. FOREGROUND MASS
+  //  Large smooth dark blob covering lower ~30%.
+  //  Top edge at y≈70–73%, sweeps gently across full width.
+  // ══════════════════════════════════════════════════════
+  {
+    const fg = [
+      [-W*.01,  H*.718 + b(8.0,.009)],
+      [ W*.10,  H*.702 + b(8.1,.008)],
+      [ W*.22,  H*.692 + b(8.2,.009)],
+      [ W*.36,  H*.698 + b(8.3,.008)],
+      [ W*.50,  H*.684 + b(8.4,.009)],
+      [ W*.65,  H*.690 + b(8.5,.008)],
+      [ W*.80,  H*.678 + b(8.6,.009)],
+      [ W*1.02, H*.686 + b(8.7,.008)],
+    ];
+    ctx.beginPath(); spline(fg);
+    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
+    const g = ctx.createLinearGradient(0, H*.69, 0, H);
+    g.addColorStop(0, '#0f1c2c'); g.addColorStop(.35, '#0b1422'); g.addColorStop(1, '#070d18');
+    ctx.fillStyle = g; ctx.fill();
+  }
+
+  // ══════════════════════════════════════════════════════
+  //  9. GROUND
+  // ══════════════════════════════════════════════════════
+  {
+    const gnd = [
+      [-W*.01,  H*.836 + b(9.0,.007)],
+      [ W*.28,  H*.824 + b(9.1,.006)],
+      [ W*.56,  H*.830 + b(9.2,.007)],
+      [ W*.82,  H*.820 + b(9.3,.006)],
+      [ W*1.02, H*.828 + b(9.4,.007)],
+    ];
+    ctx.beginPath(); spline(gnd);
+    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
+    ctx.fillStyle = '#070d18'; ctx.fill();
+  }
+
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+// ─── TIMER / COUNTDOWN ───────────────────────────────────
+const displayEl = document.getElementById('display');
+const hintEl    = document.getElementById('hint');
+const setterEl  = document.getElementById('setter');
+const minsEl    = document.getElementById('mins');
+const popupEl   = document.getElementById('popup');
+const dismissEl = document.getElementById('popup-dismiss');
+const btnCd     = document.getElementById('btn-cd');
+const btnSw     = document.getElementById('btn-sw');
+
+let mode = 'countdown';
+let cdEnd = 0, cdRunning = false, cdDone = false;
+let swStart = 0, swRunning = false, swElapsed = 0;
+
+function pad2(n){ return String(Math.floor(n)).padStart(2,'0'); }
+function fmtSecs(s){
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=Math.floor(s%60);
+  return h>0 ? `${pad2(h)} : ${pad2(m)} : ${pad2(ss)}` : `${pad2(m)} : ${pad2(ss)}`;
+}
+setInterval(()=>{
+  if(mode==='countdown' && cdRunning){
+    const rem=Math.max(0,(cdEnd-Date.now())/1000);
+    displayEl.textContent=fmtSecs(rem);
+    if(rem<=0 && !cdDone){ cdDone=true; cdRunning=false; displayEl.textContent='00 : 00'; displayEl.classList.add('done'); hintEl.textContent='click to reset'; setTimeout(()=>popupEl.classList.add('show'),700); }
+  }
+  if(mode==='stopwatch' && swRunning){ swElapsed=(Date.now()-swStart)/1000; displayEl.textContent=fmtSecs(swElapsed); }
+},250);
+
+btnCd.addEventListener('click',()=>{ if(mode==='countdown') return; mode='countdown'; btnCd.classList.add('active'); btnSw.classList.remove('active'); resetAll(); displayEl.textContent='—'; hintEl.textContent='click to set'; displayEl.classList.remove('stopwatch','active-time','done'); });
+btnSw.addEventListener('click',()=>{ if(mode==='stopwatch') return; mode='stopwatch'; btnSw.classList.add('active'); btnCd.classList.remove('active'); resetAll(); displayEl.textContent='—'; hintEl.textContent='click to start'; displayEl.classList.add('stopwatch'); displayEl.classList.remove('active-time','done'); });
+
+displayEl.addEventListener('click',()=>{
+  if(mode==='countdown'){
+    if(cdDone||cdRunning){ resetAll(); displayEl.textContent='—'; displayEl.classList.remove('active-time','done'); hintEl.textContent='click to set'; return; }
+    setterEl.classList.add('open'); displayEl.style.visibility='hidden'; hintEl.style.visibility='hidden'; minsEl.value=''; minsEl.focus();
+  } else {
+    if(!swRunning){ swStart=Date.now()-swElapsed*1000; swRunning=true; displayEl.classList.add('active-time'); hintEl.textContent='click to pause'; }
+    else { swRunning=false; displayEl.classList.remove('active-time'); hintEl.textContent='click to resume · hold to reset'; }
+  }
+});
+let holdT;
+displayEl.addEventListener('mousedown',()=>{ if(mode!=='stopwatch') return; holdT=setTimeout(()=>{ swRunning=false; swElapsed=0; displayEl.textContent='—'; displayEl.classList.remove('active-time'); hintEl.textContent='click to start'; },800); });
+displayEl.addEventListener('mouseup',()=>clearTimeout(holdT));
+
+minsEl.addEventListener('keydown',e=>{
+  if(e.key==='Enter'){ const v=parseFloat(minsEl.value); closeInput(); if(v>0){ cdEnd=Date.now()+v*60*1000; cdRunning=true; cdDone=false; displayEl.textContent=fmtSecs(v*60); displayEl.classList.add('active-time'); hintEl.textContent='click to reset'; } }
+  if(e.key==='Escape') closeInput();
+});
+function closeInput(){ setterEl.classList.remove('open'); displayEl.style.visibility=''; hintEl.style.visibility=''; }
+function resetAll(){ cdRunning=false; cdDone=false; cdEnd=0; swRunning=false; swElapsed=0; popupEl.classList.remove('show'); closeInput(); }
+dismissEl.addEventListener('click',()=>{ popupEl.classList.remove('show'); resetAll(); displayEl.textContent='—'; displayEl.classList.remove('active-time','done'); hintEl.textContent='click to set'; });
+
+let idleT;
+document.addEventListener('mousemove',()=>{ document.body.style.cursor='default'; clearTimeout(idleT); idleT=setTimeout(()=>{ document.body.style.cursor='none'; },3000); });
+</script>
+</body>
+</html>
