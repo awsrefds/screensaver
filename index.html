@@ -3,448 +3,1876 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>screensaver</title>
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300&display=swap" rel="stylesheet">
+<title>Focus — Ambient Study Timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,300;0,400;1,300&family=Caveat:wght@400;500&family=Raleway:wght@100;200;300&family=DM+Sans:wght@200;300;400&family=Cormorant+Garamond:ital,wght@0,300;1,300&display=swap" rel="stylesheet">
 <style>
-*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-html, body { width:100%; height:100%; overflow:hidden; background:#0d1a28; cursor:none; }
-canvas { position:fixed; inset:0; display:block; }
-
-#ui {
-  position: fixed; bottom: 2.6rem; left: 50%; transform: translateX(-50%);
-  z-index: 20; text-align: center;
-  font-family: 'Cormorant Garamond', serif; font-weight: 300;
-  user-select: none; white-space: nowrap;
+/* ===== RESET ===== */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --accent: #f0c060;
+  --text: rgba(255,255,255,0.88);
+  --text-dim: rgba(255,255,255,0.45);
+  --glass: rgba(255,255,255,0.07);
+  --glass-hover: rgba(255,255,255,0.12);
+  --glass-border: rgba(255,255,255,0.12);
+  --blur: blur(16px);
+  --radius: 14px;
+  --transition: 0.4s cubic-bezier(0.4,0,0.2,1);
+  --timer-font: 'Playfair Display', serif;
+  --timer-size: 120px;
 }
-#mode-row { display:flex; align-items:center; justify-content:center; gap:1.4rem; margin-bottom:5px; }
-.mode-btn { font-size:10px; letter-spacing:.5em; text-transform:lowercase; cursor:pointer; padding:3px 0; transition:color .4s; color:rgba(160,185,210,.14); }
-.mode-btn:hover { color:rgba(160,185,210,.42); }
-.mode-btn.active { color:rgba(160,185,210,.45); }
-.mode-sep { font-size:9px; color:rgba(160,185,210,.08); letter-spacing:0; }
-#display { font-size:15px; letter-spacing:.5em; color:rgba(160,185,210,.28); cursor:pointer; transition:color .4s; padding:2px 0; min-height:26px; display:block; }
-#display:hover { color:rgba(160,185,210,.52); }
-#display.active-time { color:rgba(160,185,210,.42); }
-#display.done { animation:blink 1.3s ease-in-out infinite; }
-#hint { font-size:7.5px; letter-spacing:.45em; color:rgba(160,185,210,.06); margin-top:3px; transition:color .4s; text-transform:lowercase; }
-#ui:hover #hint { color:rgba(160,185,210,.22); }
-#setter { display:none; flex-direction:column; align-items:center; gap:5px; margin-bottom:4px; }
-#setter.open { display:flex; }
-#setter label { font-size:8px; letter-spacing:.45em; color:rgba(160,185,210,.28); text-transform:lowercase; }
-#mins { background:transparent; border:none; border-bottom:1px solid rgba(160,185,210,.18); color:rgba(160,185,210,.62); font-family:'Cormorant Garamond',serif; font-weight:300; font-size:26px; letter-spacing:.35em; width:90px; text-align:center; outline:none; padding:2px 0; }
-#mins::placeholder { color:rgba(160,185,210,.1); }
-#setter-sub { font-size:7px; letter-spacing:.4em; color:rgba(160,185,210,.14); }
-#popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:50; pointer-events:none; opacity:0; transition:opacity 2s ease, background 2s ease; background:rgba(13,26,40,0); }
-#popup.show { pointer-events:auto; opacity:1; background:rgba(13,26,40,.6); }
-#popup-inner { text-align:center; font-family:'Cormorant Garamond',serif; font-weight:300; }
-#popup-msg { font-size:clamp(1.5rem,3.5vw,2.4rem); letter-spacing:.14em; color:rgba(180,200,220,.65); line-height:1.65; }
-#popup-dismiss { margin-top:1.8rem; font-size:8px; letter-spacing:.5em; color:rgba(160,185,210,.18); cursor:pointer; transition:color .4s; text-transform:lowercase; }
-#popup-dismiss:hover { color:rgba(160,185,210,.5); }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.12} }
+html, body { width: 100%; height: 100%; overflow: hidden; user-select: none; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  color: var(--text);
+  background: #0a0a0f;
+  cursor: none;
+}
+body.cursor-visible { cursor: auto; }
+body.cursor-visible * { cursor: auto; }
+body.cursor-visible button, body.cursor-visible [role="button"] { cursor: pointer; }
+body.cursor-visible input, body.cursor-visible textarea { cursor: text; }
+::selection { background: rgba(255,255,255,0.15); }
+
+/* ===== BACKGROUND LAYER ===== */
+#bg-layer {
+  position: fixed; inset: 0; z-index: 0;
+  transition: opacity 1.2s ease;
+}
+#bg-gradient {
+  position: absolute; inset: 0;
+  transition: background 1.5s ease, opacity 1.2s ease;
+}
+#bg-canvas {
+  position: absolute; inset: 0;
+  pointer-events: none;
+}
+#bg-vignette {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse at 50% 50%, transparent 30%, rgba(0,0,0,0.55) 100%);
+  pointer-events: none;
+}
+#bg-overlay {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,0.22);
+  pointer-events: none;
+}
+
+/* ===== SITE WORDMARK ===== */
+#wordmark {
+  position: fixed; top: 28px; left: 32px; z-index: 50;
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 15px;
+  letter-spacing: 0.05em;
+  color: rgba(255,255,255,0.35);
+  transition: opacity var(--transition);
+  pointer-events: none;
+}
+body.zen-mode #wordmark { opacity: 0; }
+
+/* ===== TIMER ===== */
+#timer-wrap {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  cursor: grab;
+  transition: opacity 0.3s ease;
+}
+#timer-wrap:active { cursor: grabbing; }
+#timer-wrap.dragging { transition: none; }
+#timer-display {
+  font-family: var(--timer-font);
+  font-size: var(--timer-size);
+  font-weight: 300;
+  color: rgba(255,255,255,0.92);
+  line-height: 1;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 60px rgba(255,255,255,0.08);
+  transition: font-family 0.5s ease, font-size 0.3s ease, color 0.5s ease;
+  white-space: nowrap;
+}
+#timer-display.font-minimal {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 100;
+  color: rgba(255,255,255,0.60);
+  letter-spacing: 0.05em;
+}
+#timer-display.font-serif {
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
+}
+#timer-display.font-handwritten {
+  font-family: 'Caveat', cursive;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+#timer-display.font-ghost {
+  font-family: 'Raleway', sans-serif;
+  font-weight: 100;
+  color: rgba(255,255,255,0.28);
+  letter-spacing: 0.08em;
+}
+#timer-mode-label {
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  transition: color 0.5s ease;
+}
+#session-dots {
+  display: flex; gap: 6px; align-items: center;
+  margin-top: 2px;
+  min-height: 8px;
+  transition: opacity 0.4s ease;
+}
+.dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  transition: background 0.4s ease, transform 0.3s ease;
+}
+.dot.filled { background: rgba(255,255,255,0.75); transform: scale(1.1); }
+#timer-free-label {
+  font-size: 11px;
+  font-weight: 300;
+  color: rgba(255,255,255,0.28);
+  letter-spacing: 0.1em;
+  text-align: center;
+  min-height: 16px;
+}
+/* Timer resize controls on hover */
+#timer-resize {
+  display: flex; gap: 12px; align-items: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  margin-top: 4px;
+}
+#timer-wrap:hover #timer-resize { opacity: 1; }
+.resize-btn {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.resize-btn:hover { background: var(--glass-hover); color: var(--text); }
+
+/* Timer progress ring */
+#timer-ring {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0.35;
+  transition: opacity 0.4s ease;
+}
+#timer-ring svg circle.track {
+  stroke: rgba(255,255,255,0.1);
+  fill: none;
+  stroke-width: 1.5;
+}
+#timer-ring svg circle.progress {
+  stroke: rgba(255,255,255,0.6);
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  transform-origin: center;
+  transform: rotate(-90deg);
+  transition: stroke-dashoffset 1s linear, stroke 0.8s ease;
+}
+
+/* ===== BOTTOM UI ===== */
+#bottom-ui {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+  padding: 0 32px 28px;
+  display: flex; align-items: flex-end; justify-content: space-between;
+  gap: 16px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity var(--transition), transform var(--transition);
+  pointer-events: none;
+}
+#bottom-ui.visible {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: all;
+}
+body.zen-mode #bottom-ui { opacity: 0 !important; pointer-events: none !important; }
+
+/* Glass pill shared style */
+.glass-pill {
+  background: var(--glass);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  border-radius: 100px;
+  padding: 8px 16px;
+  display: flex; align-items: center; gap: 10px;
+}
+
+/* Music controls */
+#music-wrap { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+#music-channels { display: flex; gap: 6px; }
+.music-btn {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 100px;
+  padding: 7px 14px;
+  color: var(--text-dim);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  backdrop-filter: var(--blur);
+  white-space: nowrap;
+}
+.music-btn:hover { background: var(--glass-hover); color: var(--text); }
+.music-btn.active { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.9); border-color: rgba(255,255,255,0.2); }
+#volume-row { display: flex; align-items: center; gap: 10px; padding: 0 2px; }
+#volume-icon { font-size: 13px; color: var(--text-dim); }
+#volume-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 80px; height: 2px;
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  outline: none; cursor: pointer;
+}
+#volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.75);
+  transition: transform 0.2s ease;
+}
+#volume-slider:hover::-webkit-slider-thumb { transform: scale(1.3); }
+
+/* Timer mode selector */
+#timer-modes-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+#timer-modes { display: flex; gap: 2px; }
+.mode-btn {
+  background: transparent;
+  border: none;
+  border-radius: 100px;
+  padding: 8px 18px;
+  color: var(--text-dim);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+.mode-btn:hover { color: var(--text); background: var(--glass); }
+.mode-btn.active { color: rgba(255,255,255,0.9); background: var(--glass-hover); }
+#timer-controls { display: flex; gap: 10px; align-items: center; }
+#play-pause-btn {
+  width: 44px; height: 44px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.2);
+  color: var(--text);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.25s ease;
+  backdrop-filter: var(--blur);
+}
+#play-pause-btn:hover { background: rgba(255,255,255,0.18); transform: scale(1.05); }
+#reset-btn {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.25s ease;
+  backdrop-filter: var(--blur);
+}
+#reset-btn:hover { color: var(--text); background: var(--glass-hover); }
+
+/* Right controls */
+#right-controls { display: flex; align-items: center; gap: 8px; }
+.icon-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-size: 15px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.25s ease;
+  backdrop-filter: var(--blur);
+}
+.icon-btn:hover { background: var(--glass-hover); color: var(--text); }
+.icon-btn.active { background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.9); }
+
+/* ===== THEME PICKER ===== */
+#theme-picker {
+  position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+  z-index: 50;
+  background: rgba(8,8,12,0.75);
+  backdrop-filter: blur(24px);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 16px;
+  display: flex; gap: 10px;
+  max-width: calc(100vw - 64px);
+  overflow-x: auto;
+  opacity: 0; pointer-events: none;
+  transform: translateX(-50%) translateY(10px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  scrollbar-width: none;
+}
+#theme-picker::-webkit-scrollbar { display: none; }
+#theme-picker.visible { opacity: 1; pointer-events: all; transform: translateX(-50%) translateY(0); }
+body.zen-mode #theme-picker { opacity: 0 !important; pointer-events: none !important; }
+.theme-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  min-width: 60px;
+}
+.theme-chip:hover { transform: scale(1.05); }
+.theme-chip.active .theme-swatch { border-color: rgba(255,255,255,0.6); }
+.theme-swatch {
+  width: 48px; height: 48px;
+  border-radius: 12px;
+  border: 2px solid rgba(255,255,255,0.15);
+  overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+.theme-swatch div { width: 100%; height: 100%; }
+.theme-chip-name {
+  font-size: 9px;
+  font-weight: 300;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* ===== SIDE PANELS (Notepad & Todo) ===== */
+.side-panel {
+  position: fixed; top: 0; right: -380px; bottom: 0; z-index: 45;
+  width: 340px;
+  background: rgba(8,8,12,0.7);
+  backdrop-filter: blur(24px);
+  border-left: 1px solid var(--glass-border);
+  padding: 32px 24px 24px;
+  display: flex; flex-direction: column; gap: 16px;
+  transition: right 0.45s cubic-bezier(0.4,0,0.2,1);
+}
+.side-panel.open { right: 0; }
+body.zen-mode .side-panel { right: -380px !important; }
+.panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title {
+  font-family: 'Cormorant Garamond', serif;
+  font-style: italic;
+  font-size: 20px;
+  font-weight: 300;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.02em;
+}
+.panel-close {
+  background: none; border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+  transition: color 0.2s ease;
+  line-height: 1;
+}
+.panel-close:hover { color: var(--text); }
+
+/* Notepad */
+#notepad-textarea {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: rgba(255,255,255,0.75);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13.5px;
+  font-weight: 300;
+  line-height: 1.8;
+  resize: none;
+  -webkit-appearance: none;
+  caret-color: rgba(255,255,255,0.6);
+}
+#notepad-textarea::placeholder { color: rgba(255,255,255,0.18); }
+#notepad-footer {
+  font-size: 10px;
+  color: rgba(255,255,255,0.2);
+  letter-spacing: 0.05em;
+  text-align: right;
+}
+
+/* Todo */
+#todo-input-row { display: flex; gap: 8px; align-items: center; }
+#todo-input {
+  flex: 1;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 9px 13px;
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 300;
+  outline: none;
+  transition: border-color 0.2s ease;
+  caret-color: rgba(255,255,255,0.6);
+}
+#todo-input::placeholder { color: rgba(255,255,255,0.18); }
+#todo-input:focus { border-color: rgba(255,255,255,0.25); }
+#todo-add-btn {
+  width: 34px; height: 34px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.15);
+  color: var(--text-dim);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+#todo-add-btn:hover { background: rgba(255,255,255,0.16); color: var(--text); }
+#todo-list {
+  display: flex; flex-direction: column; gap: 4px;
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.1) transparent;
+}
+.todo-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: var(--glass);
+  border: 1px solid transparent;
+  transition: all 0.25s ease;
+  animation: slideIn 0.25s ease;
+}
+.todo-item:hover { background: var(--glass-hover); border-color: var(--glass-border); }
+.todo-item.done .todo-text { text-decoration: line-through; color: rgba(255,255,255,0.28); }
+.todo-check {
+  width: 16px; height: 16px;
+  border-radius: 4px;
+  border: 1px solid rgba(255,255,255,0.25);
+  cursor: pointer;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px;
+  transition: all 0.2s ease;
+}
+.todo-item.done .todo-check { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.2); }
+.todo-text {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 300;
+  color: rgba(255,255,255,0.75);
+  line-height: 1.4;
+  word-break: break-word;
+}
+.todo-delete {
+  background: none; border: none;
+  color: rgba(255,255,255,0.15);
+  font-size: 16px;
+  cursor: pointer;
+  line-height: 1;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+}
+.todo-item:hover .todo-delete { color: rgba(255,255,255,0.35); }
+.todo-delete:hover { color: rgba(255,255,255,0.65) !important; }
+#todo-footer {
+  display: flex; justify-content: space-between; align-items: center;
+}
+#todo-clear-done {
+  background: none; border: none;
+  color: rgba(255,255,255,0.22);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 300;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  letter-spacing: 0.04em;
+}
+#todo-clear-done:hover { color: rgba(255,255,255,0.5); }
+#todo-count { font-size: 10px; color: rgba(255,255,255,0.2); letter-spacing: 0.05em; }
+
+/* ===== SETTINGS PANEL ===== */
+#settings-panel {
+  position: fixed; top: 0; right: -420px; bottom: 0; z-index: 55;
+  width: 360px;
+  background: rgba(6,6,10,0.82);
+  backdrop-filter: blur(28px);
+  border-left: 1px solid rgba(255,255,255,0.08);
+  padding: 36px 28px 28px;
+  display: flex; flex-direction: column; gap: 0;
+  overflow-y: auto;
+  transition: right 0.45s cubic-bezier(0.4,0,0.2,1);
+  scrollbar-width: none;
+}
+#settings-panel::-webkit-scrollbar { display: none; }
+#settings-panel.open { right: 0; }
+.settings-section {
+  padding: 20px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.settings-section:last-child { border-bottom: none; }
+.settings-section-title {
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.28);
+  margin-bottom: 16px;
+}
+.settings-row {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 14px;
+  gap: 16px;
+}
+.settings-row:last-child { margin-bottom: 0; }
+.settings-label {
+  font-size: 13px;
+  font-weight: 300;
+  color: rgba(255,255,255,0.65);
+  flex: 1;
+}
+.settings-sub {
+  font-size: 11px;
+  color: rgba(255,255,255,0.28);
+  display: block;
+  margin-top: 2px;
+}
+/* Toggle */
+.toggle {
+  width: 40px; height: 22px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 100px;
+  border: 1px solid rgba(255,255,255,0.1);
+  cursor: pointer;
+  position: relative;
+  transition: background 0.25s ease;
+  flex-shrink: 0;
+}
+.toggle.on { background: rgba(255,255,255,0.25); border-color: rgba(255,255,255,0.2); }
+.toggle::after {
+  content: '';
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.6);
+  transition: transform 0.25s ease, background 0.25s ease;
+}
+.toggle.on::after { transform: translateX(18px); background: rgba(255,255,255,0.92); }
+/* Number input */
+.num-input {
+  width: 64px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 300;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.num-input:focus { border-color: rgba(255,255,255,0.3); }
+/* Font picker */
+#font-picker { display: flex; flex-wrap: wrap; gap: 6px; }
+.font-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.font-btn:hover { background: var(--glass-hover); color: var(--text); }
+.font-btn.active { background: rgba(255,255,255,0.15); color: var(--text); border-color: rgba(255,255,255,0.25); }
+/* Action button */
+.action-btn {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: 8px;
+  padding: 8px 14px;
+  color: var(--text-dim);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 300;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  letter-spacing: 0.04em;
+}
+.action-btn:hover { background: var(--glass-hover); color: var(--text); }
+
+/* ===== AUDIO PROMPT ===== */
+#audio-prompt {
+  position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%);
+  z-index: 60;
+  background: rgba(8,8,12,0.82);
+  backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-size: 12px;
+  font-weight: 300;
+  color: rgba(255,255,255,0.5);
+  letter-spacing: 0.06em;
+  text-align: center;
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.4s ease;
+}
+#audio-prompt.visible { opacity: 1; pointer-events: none; }
+
+/* ===== NOTIFICATION ===== */
+#notification {
+  position: fixed; top: 28px; left: 50%; transform: translateX(-50%) translateY(-20px);
+  z-index: 70;
+  background: rgba(8,8,12,0.82);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 100px;
+  padding: 10px 22px;
+  font-size: 12px;
+  font-weight: 300;
+  color: rgba(255,255,255,0.7);
+  letter-spacing: 0.08em;
+  opacity: 0;
+  transition: all 0.4s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#notification.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ===== ZEN HINT ===== */
+#zen-hint {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+  z-index: 25;
+  font-size: 10px;
+  font-weight: 300;
+  letter-spacing: 0.14em;
+  color: rgba(255,255,255,0.18);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+body.zen-mode #zen-hint { opacity: 1; }
+
+/* ===== YOUTUBE IFRAMES ===== */
+#yt-container {
+  position: fixed; top: -9999px; left: -9999px;
+  pointer-events: none; opacity: 0;
+  width: 1px; height: 1px;
+  overflow: hidden;
+}
+
+/* ===== ANIMATIONS ===== */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(10px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.92; }
+  50% { opacity: 0.78; }
+}
+#timer-display.running {
+  animation: pulse 4s ease-in-out infinite;
+}
+@keyframes bgShift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ===== KEYBOARD HINT ===== */
+#shortcuts-hint {
+  position: fixed; bottom: 28px; right: 32px;
+  z-index: 45;
+  display: flex; flex-direction: column; gap: 4px; align-items: flex-end;
+  opacity: 0; transition: opacity 0.4s ease;
+  pointer-events: none;
+}
+#shortcuts-hint.visible { opacity: 1; }
+body.zen-mode #shortcuts-hint { opacity: 0 !important; }
+.shortcut-row {
+  display: flex; gap: 6px; align-items: center;
+  font-size: 10px; font-weight: 300;
+  color: rgba(255,255,255,0.22);
+  letter-spacing: 0.06em;
+}
+kbd {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 9px;
+}
+
+/* ===== SCROLLBAR ===== */
+#todo-list::-webkit-scrollbar { width: 3px; }
+#todo-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
 
-<div id="ui">
-  <div id="mode-row">
-    <span class="mode-btn active" id="btn-cd">countdown</span>
-    <span class="mode-sep">/</span>
-    <span class="mode-btn" id="btn-sw">timer</span>
-  </div>
-  <div id="setter">
-    <label>minutes</label>
-    <input id="mins" type="number" min="1" max="999" placeholder="00" autocomplete="off">
-    <div id="setter-sub">enter to start · esc to cancel</div>
-  </div>
-  <div id="display">—</div>
-  <div id="hint">click to set</div>
+<!-- Background -->
+<div id="bg-layer">
+  <div id="bg-gradient"></div>
+  <canvas id="bg-canvas"></canvas>
+  <div id="bg-vignette"></div>
+  <div id="bg-overlay"></div>
 </div>
 
-<div id="popup">
-  <div id="popup-inner">
-    <div id="popup-msg">well done<br>you deserve a rest</div>
-    <div id="popup-dismiss">dismiss</div>
+<!-- Wordmark -->
+<div id="wordmark">focus.</div>
+
+<!-- Timer -->
+<div id="timer-wrap">
+  <canvas id="timer-ring" width="0" height="0"></canvas>
+  <div id="timer-mode-label">POMODORO · SESSION 1</div>
+  <div id="timer-display">25:00</div>
+  <div id="session-dots"></div>
+  <div id="timer-free-label"></div>
+  <div id="timer-resize">
+    <button class="resize-btn" id="size-down">−</button>
+    <button class="resize-btn" id="size-up">+</button>
   </div>
+</div>
+
+<!-- Bottom UI -->
+<div id="bottom-ui">
+  <!-- Music -->
+  <div id="music-wrap">
+    <div id="music-channels">
+      <button class="music-btn" data-ch="0">Dreamy Beats</button>
+      <button class="music-btn" data-ch="1">Lo-Fi Hip Hop</button>
+      <button class="music-btn" data-ch="2">Rain & Fire</button>
+    </div>
+    <div id="volume-row">
+      <span id="volume-icon">♪</span>
+      <input type="range" id="volume-slider" min="0" max="100" value="60">
+    </div>
+  </div>
+
+  <!-- Timer controls -->
+  <div id="timer-modes-wrap">
+    <div id="timer-modes">
+      <button class="mode-btn active" data-mode="pomodoro">Pomodoro</button>
+      <button class="mode-btn" data-mode="free">Free</button>
+      <button class="mode-btn" data-mode="break">Break</button>
+    </div>
+    <div id="timer-controls">
+      <button id="reset-btn" title="Reset">↺</button>
+      <button id="play-pause-btn" title="Play/Pause (Space)">▶</button>
+    </div>
+  </div>
+
+  <!-- Right icons -->
+  <div id="right-controls">
+    <button class="icon-btn" id="notepad-btn" title="Notepad (N)">✎</button>
+    <button class="icon-btn" id="todo-btn" title="Tasks (T)">☑</button>
+    <button class="icon-btn" id="theme-btn" title="Themes">◈</button>
+    <button class="icon-btn" id="settings-btn" title="Settings">⚙</button>
+    <button class="icon-btn" id="zen-btn" title="Zen mode (H)">⊙</button>
+  </div>
+</div>
+
+<!-- Theme Picker -->
+<div id="theme-picker"></div>
+
+<!-- Notepad Panel -->
+<div id="notepad-panel" class="side-panel">
+  <div class="panel-header">
+    <span class="panel-title">Notepad</span>
+    <button class="panel-close" id="notepad-close">×</button>
+  </div>
+  <textarea id="notepad-textarea" placeholder="Start writing…" spellcheck="false"></textarea>
+  <div id="notepad-footer">0 words</div>
+</div>
+
+<!-- Todo Panel -->
+<div id="todo-panel" class="side-panel">
+  <div class="panel-header">
+    <span class="panel-title">Tasks</span>
+    <button class="panel-close" id="todo-close">×</button>
+  </div>
+  <div id="todo-input-row">
+    <input type="text" id="todo-input" placeholder="Add a task…" maxlength="120">
+    <button id="todo-add-btn">+</button>
+  </div>
+  <div id="todo-list"></div>
+  <div id="todo-footer">
+    <button id="todo-clear-done">Clear completed</button>
+    <span id="todo-count"></span>
+  </div>
+</div>
+
+<!-- Settings Panel -->
+<div id="settings-panel">
+  <div class="panel-header" style="margin-bottom:8px">
+    <span class="panel-title">Settings</span>
+    <button class="panel-close" id="settings-close">×</button>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Clock Style</div>
+    <div id="font-picker">
+      <button class="font-btn active" data-font="serif" style="font-family:'Playfair Display',serif;font-style:italic">Serif</button>
+      <button class="font-btn" data-font="default" style="font-family:'DM Sans',sans-serif">Default</button>
+      <button class="font-btn" data-font="minimal" style="font-family:'Raleway',sans-serif;font-weight:200">Minimal</button>
+      <button class="font-btn" data-font="handwritten" style="font-family:'Caveat',cursive">Script</button>
+      <button class="font-btn" data-font="ghost" style="font-family:'Raleway',sans-serif;font-weight:100;opacity:0.6">Ghost</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Pomodoro Intervals</div>
+    <div class="settings-row">
+      <span class="settings-label">Work <span class="settings-sub">minutes</span></span>
+      <input type="number" class="num-input" id="set-work" min="1" max="90" value="25">
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Short Break <span class="settings-sub">minutes</span></span>
+      <input type="number" class="num-input" id="set-short" min="1" max="30" value="5">
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Long Break <span class="settings-sub">minutes</span></span>
+      <input type="number" class="num-input" id="set-long" min="1" max="60" value="15">
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Behaviour</div>
+    <div class="settings-row">
+      <span class="settings-label">Auto-start next session</span>
+      <div class="toggle" id="tog-autostart"></div>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Sound on session end</span>
+      <div class="toggle on" id="tog-sound"></div>
+    </div>
+    <div class="settings-row">
+      <span class="settings-label">Show session dots</span>
+      <div class="toggle on" id="tog-dots"></div>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Data</div>
+    <div class="settings-row">
+      <button class="action-btn" id="reset-pos-btn">Reset timer position</button>
+      <button class="action-btn" id="clear-notepad-btn">Clear notepad</button>
+    </div>
+    <div class="settings-row">
+      <button class="action-btn" id="clear-todos-btn">Clear all tasks</button>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-title">Keyboard Shortcuts</div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <div class="shortcut-row" style="color:rgba(255,255,255,0.4)"><kbd>Space</kbd> Play / Pause</div>
+      <div class="shortcut-row" style="color:rgba(255,255,255,0.4)"><kbd>H</kbd> Zen Mode</div>
+      <div class="shortcut-row" style="color:rgba(255,255,255,0.4)"><kbd>N</kbd> Notepad</div>
+      <div class="shortcut-row" style="color:rgba(255,255,255,0.4)"><kbd>T</kbd> Tasks</div>
+      <div class="shortcut-row" style="color:rgba(255,255,255,0.4)"><kbd>M</kbd> Cycle Music</div>
+      <div class="shortcut-row" style="color:rgba(255,255,255,0.4)"><kbd>Esc</kbd> Close panels</div>
+    </div>
+  </div>
+</div>
+
+<!-- YouTube Embeds (hidden) -->
+<div id="yt-container">
+  <iframe id="yt-0" width="1" height="1" src="" frameborder="0" allow="autoplay" allowfullscreen></iframe>
+  <iframe id="yt-1" width="1" height="1" src="" frameborder="0" allow="autoplay" allowfullscreen></iframe>
+  <iframe id="yt-2" width="1" height="1" src="" frameborder="0" allow="autoplay" allowfullscreen></iframe>
+</div>
+
+<!-- Audio prompt -->
+<div id="audio-prompt">Click a music channel to enable audio</div>
+
+<!-- Notification -->
+<div id="notification"></div>
+
+<!-- Zen hint -->
+<div id="zen-hint">Press H to exit zen mode</div>
+
+<!-- Shortcuts hint -->
+<div id="shortcuts-hint">
+  <div class="shortcut-row"><kbd>Space</kbd> play/pause</div>
+  <div class="shortcut-row"><kbd>H</kbd> zen mode</div>
+  <div class="shortcut-row"><kbd>N</kbd> notepad · <kbd>T</kbd> tasks</div>
 </div>
 
 <script>
-// ─── canvas ───────────────────────────────────────────────
-const C = document.getElementById('c');
-const ctx = C.getContext('2d');
-let W, H;
-function resize(){ W = C.width = window.innerWidth; H = C.height = window.innerHeight; }
-resize();
-window.addEventListener('resize', resize);
+/* ============================================================
+   FOCUS — Ambient Study Timer
+   ============================================================ */
 
-// ─── catmull-rom spline ───────────────────────────────────
-function spline(pts){
-  if(pts.length < 2) return;
-  ctx.moveTo(pts[0][0], pts[0][1]);
-  for(let i = 0; i < pts.length - 1; i++){
-    const p0 = pts[Math.max(i-1, 0)];
-    const p1 = pts[i];
-    const p2 = pts[i+1];
-    const p3 = pts[Math.min(i+2, pts.length-1)];
-    for(let t = 0; t <= 1; t += 0.04){
-      const t2=t*t, t3=t2*t;
-      const x=0.5*((2*p1[0])+(-p0[0]+p2[0])*t+(2*p0[0]-5*p1[0]+4*p2[0]-p3[0])*t2+(-p0[0]+3*p1[0]-3*p2[0]+p3[0])*t3);
-      const y=0.5*((2*p1[1])+(-p0[1]+p2[1])*t+(2*p0[1]-5*p1[1]+4*p2[1]-p3[1])*t2+(-p0[1]+3*p1[1]-3*p2[1]+p3[1])*t3);
-      ctx.lineTo(x, y);
+// ===== THEMES =====
+const THEMES = {
+  tuscan:     { name:'Tuscan Village',    g1:'#c8791a', g2:'#e8a030', g3:'#a85020', g4:'#6a3010', particles:'dust',   ov:'rgba(15,8,2,0.3)' },
+  lofiClouds: { name:'Lofi Clouds',       g1:'#98c8e8', g2:'#c8dff0', g3:'#e8c8d8', g4:'#f0b8b8', particles:'clouds', ov:'rgba(5,5,20,0.15)' },
+  lofiVillage:{ name:'Lofi Village',      g1:'#2a1830', g2:'#502060', g3:'#8a4860', g4:'#c07040', particles:'none',   ov:'rgba(10,5,20,0.35)' },
+  newYork:    { name:'New York Night',    g1:'#0a0a18', g2:'#14182e', g3:'#1e2040', g4:'#0a0a18', particles:'rain',   ov:'rgba(5,5,20,0.5)' },
+  tokyo:      { name:'Tokyo Night',       g1:'#100818', g2:'#200828', g3:'#380a30', g4:'#0a0810', particles:'rain',   ov:'rgba(10,2,15,0.55)' },
+  shanghai:   { name:'Shanghai Night',    g1:'#040c18', g2:'#081428', g3:'#0c1e38', g4:'#040c18', particles:'shimmer',ov:'rgba(2,5,15,0.5)' },
+  fireplace:  { name:'Cozy Fireplace',    g1:'#5a1200', g2:'#8a2a00', g3:'#3a0800', g4:'#1a0400', particles:'sparks', ov:'rgba(20,5,0,0.4)' },
+  winterCabin:{ name:'Winter Cabin',      g1:'#101822', g2:'#1a2838', g3:'#243040', g4:'#aabbcc', particles:'snow',   ov:'rgba(5,10,20,0.45)' },
+  beach:      { name:'Beach Sunset',      g1:'#180820', g2:'#681840', g3:'#b84818', g4:'#e89028', particles:'waves',  ov:'rgba(10,5,15,0.35)' },
+  seoul:      { name:'Seoul Night Café',  g1:'#1a0e08', g2:'#2a1a10', g3:'#180c06', g4:'#100804', particles:'steam',  ov:'rgba(15,8,3,0.5)' },
+  darkAcad:   { name:'Dark Academia',     g1:'#1c1408', g2:'#2a1e0c', g3:'#160e06', g4:'#0e0a04', particles:'dust',   ov:'rgba(10,7,2,0.5)' },
+  centralPk:  { name:'Fall Central Park', g1:'#341808', g2:'#5a2a10', g3:'#7a3e18', g4:'#3a2010', particles:'leaves', ov:'rgba(15,7,3,0.4)' },
+  sunsetHill: { name:'Sunset Hill',       g1:'#080614', g2:'#2e0c20', g3:'#7a2818', g4:'#e05818', particles:'none',   ov:'rgba(5,3,10,0.38)' },
+  fogForest:  { name:'Foggy Forest',      g1:'#0c1410', g2:'#141e12', g3:'#182816', g4:'#0a1008', particles:'fog',    ov:'rgba(5,10,5,0.45)' },
+};
+
+// ===== STATE =====
+const DEFAULT_STATE = {
+  theme: 'darkAcad',
+  timerMode: 'pomodoro',  // pomodoro | free | break
+  timerFont: 'serif',
+  timerSize: 120,
+  timerX: null, timerY: null,
+  pomodoroWork: 25,
+  pomodoroShort: 5,
+  pomodoroLong: 15,
+  autoStart: false,
+  soundOn: true,
+  showDots: true,
+  musicChannel: -1,
+  volume: 60,
+  notepad: '',
+  todos: [],
+  zenMode: false,
+};
+
+let S = { ...DEFAULT_STATE };
+try { const s = JSON.parse(localStorage.getItem('focus_state') || '{}'); S = {...S, ...s}; } catch(e){}
+
+function save() {
+  try { localStorage.setItem('focus_state', JSON.stringify(S)); } catch(e){}
+}
+
+// ===== TIMER ENGINE =====
+let timerState = {
+  running: false,
+  seconds: 0,        // remaining (countdown) or elapsed (free)
+  totalSeconds: 0,   // total for progress ring
+  session: 0,        // 0-3 pomodoro cycle
+  cycle: 1,          // current cycle number
+  phase: 'work',     // work | short | long
+  freeElapsed: 0,
+};
+
+function pomodoroTotal() {
+  const t = timerState;
+  if(t.phase === 'work') return S.pomodoroWork * 60;
+  if(t.phase === 'short') return S.pomodoroShort * 60;
+  return S.pomodoroLong * 60;
+}
+
+function resetTimer() {
+  timerState.running = false;
+  if(S.timerMode === 'pomodoro') {
+    timerState.seconds = pomodoroTotal();
+    timerState.totalSeconds = pomodoroTotal();
+  } else if(S.timerMode === 'free') {
+    timerState.freeElapsed = 0;
+    timerState.seconds = 0;
+  } else {
+    timerState.seconds = S.pomodoroShort * 60;
+    timerState.totalSeconds = S.pomodoroShort * 60;
+  }
+  updateTimerDisplay();
+  updatePlayBtn();
+  $('#timer-display').classList.remove('running');
+}
+
+function startTimer() {
+  timerState.running = true;
+  updatePlayBtn();
+  $('#timer-display').classList.add('running');
+  if(!timerInterval) timerInterval = setInterval(tickTimer, 1000);
+}
+function pauseTimer() {
+  timerState.running = false;
+  updatePlayBtn();
+  $('#timer-display').classList.remove('running');
+}
+function toggleTimer() {
+  timerState.running ? pauseTimer() : startTimer();
+}
+
+let timerInterval = null;
+function tickTimer() {
+  if(!timerState.running) return;
+  if(S.timerMode === 'free') {
+    timerState.freeElapsed++;
+    updateTimerDisplay();
+  } else {
+    timerState.seconds--;
+    updateTimerDisplay();
+    if(timerState.seconds <= 0) onTimerEnd();
+  }
+}
+
+function onTimerEnd() {
+  timerState.running = false;
+  $('#timer-display').classList.remove('running');
+  if(S.soundOn) playBell();
+  if(S.timerMode === 'pomodoro') {
+    if(timerState.phase === 'work') {
+      timerState.session++;
+      if(timerState.session >= 4) {
+        timerState.session = 0;
+        timerState.cycle++;
+        timerState.phase = 'long';
+        showNotif('Time for a long break! 🌿');
+      } else {
+        timerState.phase = 'short';
+        showNotif('Short break time! ☕');
+      }
+    } else {
+      timerState.phase = 'work';
+      showNotif('Back to focus! 🎯');
+    }
+    timerState.seconds = pomodoroTotal();
+    timerState.totalSeconds = pomodoroTotal();
+    updateTimerDisplay();
+    updateModeLabel();
+    if(S.autoStart) startTimer();
+    else updatePlayBtn();
+  } else if(S.timerMode === 'break') {
+    showNotif('Break over! 🎯');
+    if(S.autoStart) {
+      S.timerMode = 'pomodoro';
+      setMode('pomodoro');
+      startTimer();
     }
   }
-  ctx.lineTo(pts[pts.length-1][0], pts[pts.length-1][1]);
 }
 
-// ─── DRAW ────────────────────────────────────────────────
-// All coords are fractions of W/H, pixel-traced from reference.
-//
-// COLOUR PALETTE (matched from reference):
-//   Sky:             #1a2e48  top → #253a54 horizon
-//   Mountains:       #192840  (barely darker than sky)
-//   Upper catchlight:#67808e  (the bright band — lightest dune tone)
-//   Lower catchlight:#54606e  (second band — medium-light)
-//   Dune base:       #2c3d50  (background dune face)
-//   Shadow face:     #101c2a  (very dark navy)
-//   Foreground:      #0d1826  (near-black)
-//   Ground:          #080e1a  (darkest)
-//
-// STRUCTURE (back-to-front):
-//   1. Sky
-//   2. Left mountains
-//   3. Right mountains
-//   4. Dune base (entire dune silhouette, darkest dune tone)
-//   5. Upper catchlight band (clipped to dune)
-//   6. Lower catchlight band (clipped to dune)
-//   7. Shadow face (overlaid from crest rightward)
-//   8. Foreground mass
-//   9. Ground
-//
-// CREST: x=63.5%, y=27.8% — with wave-hook on shadow side
-// SECONDARY HUMP: x=45.5%, y=30.8%
-// LEFT SKYLINE at x=0: y=46.8%
-
-function draw(ts){
-  const t = ts * 0.001;
-  // Ultra-subtle per-point breath — amplitude 0.10% of screen
-  const A = 0.001;
-  function b(ph, sp){ return Math.sin(t * sp + ph) * A * H; }
-
-  ctx.clearRect(0, 0, W, H);
-
-  // ══════════════════════════════════════════════════════
-  //  1. SKY
-  // ══════════════════════════════════════════════════════
-  {
-    const g = ctx.createLinearGradient(0, 0, 0, H * 0.50);
-    g.addColorStop(0,    '#152030');
-    g.addColorStop(0.55, '#1d2e44');
-    g.addColorStop(1,    '#253a54');
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  // ══════════════════════════════════════════════════════
-  //  2. LEFT MOUNTAINS
-  //  Jagged ridge x=0–21%, barely darker than sky
-  // ══════════════════════════════════════════════════════
-  {
-    const p = [
-      [-W*.01,  H*.498 + b(0.0,.022)],
-      [ W*.018, H*.460 + b(0.2,.020)],
-      [ W*.038, H*.474 + b(0.4,.022)],
-      [ W*.058, H*.448 + b(0.6,.020)],
-      [ W*.078, H*.464 + b(0.8,.022)],
-      [ W*.098, H*.444 + b(1.0,.020)],
-      [ W*.120, H*.458 + b(1.2,.022)],
-      [ W*.144, H*.446 + b(1.4,.020)],
-      [ W*.168, H*.460 + b(1.6,.022)],
-      [ W*.194, H*.450 + b(1.8,.020)],
-      [ W*.218, H*.464 + b(2.0,.022)],
-    ];
-    ctx.beginPath(); spline(p);
-    ctx.lineTo(W*.218, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
-    ctx.fillStyle = '#192840'; ctx.fill();
-  }
-
-  // ══════════════════════════════════════════════════════
-  //  3. RIGHT MOUNTAINS
-  //  x=73–100%, same tone
-  // ══════════════════════════════════════════════════════
-  {
-    const p = [
-      [ W*.728, H*.470 + b(3.0,.021)],
-      [ W*.754, H*.450 + b(3.2,.019)],
-      [ W*.778, H*.462 + b(3.4,.021)],
-      [ W*.802, H*.440 + b(3.6,.019)],
-      [ W*.826, H*.454 + b(3.8,.021)],
-      [ W*.850, H*.444 + b(4.0,.019)],
-      [ W*.876, H*.456 + b(4.2,.021)],
-      [ W*.904, H*.446 + b(4.4,.019)],
-      [ W*.934, H*.458 + b(4.6,.021)],
-      [ W*.966, H*.448 + b(4.8,.019)],
-      [ W*1.01, H*.460],
-    ];
-    ctx.beginPath(); spline(p);
-    ctx.lineTo(W*1.01, H+2); ctx.lineTo(W*.728, H+2); ctx.closePath();
-    ctx.fillStyle = '#192840'; ctx.fill();
-  }
-
-  // ══════════════════════════════════════════════════════
-  //  4. DUNE BASE
-  //  Entire dune silhouette — dark background tone.
-  //
-  //  SKYLINE (dune upper silhouette against sky):
-  //   Starts at left edge y=46.8%, rises to secondary hump
-  //   (45.5%, 30.8%), dips slightly to (52%, 29.0%), then
-  //   rises sharply to main peak (63.5%, 27.8%).
-  //   Shadow side drops steeply right with wave-hook.
-  // ══════════════════════════════════════════════════════
-  const CX = W*.635 + Math.sin(t*.011+.5)*A*W*.3;
-  const CY = H*.278 + b(.5,.011);
-
-  // Full dune skyline — both lit side and shadow side
-  const skyline = [
-    [-W*.01,  H*.468 + b(1.0,.013)],
-    [ W*.07,  H*.432 + b(1.1,.012)],
-    [ W*.15,  H*.394 + b(1.2,.013)],
-    [ W*.23,  H*.358 + b(1.3,.012)],
-    [ W*.31,  H*.328 + b(1.4,.013)],
-    [ W*.39,  H*.312 + b(1.5,.012)],
-    [ W*.455, H*.308 + b(1.6,.013)], // ← secondary hump peak
-    [ W*.50,  H*.295 + b(1.7,.012)], // slight dip
-    [ W*.56,  H*.284 + b(1.8,.013)], // rising toward main peak
-    [ CX,      CY ],                  // ← MAIN PEAK (wave crest)
-    // shadow side — wave-hook: slight left-overhang then drops right
-    [ W*.648, H*.276 + b(1.9,.012)], // hook: moves slightly right at same height
-    [ W*.660, H*.278 + b(2.0,.013)], // inflection
-    [ W*.678, H*.294 + b(2.1,.012)], // begins dropping
-    [ W*.710, H*.328 + b(2.2,.013)],
-    [ W*.748, H*.370 + b(2.3,.012)],
-    [ W*.792, H*.418 + b(2.4,.013)],
-    [ W*.840, H*.466 + b(2.5,.012)],
-    [ W*.892, H*.516 + b(2.6,.013)],
-    [ W*.946, H*.560 + b(2.7,.012)],
-    [ W*1.02, H*.606 + b(2.8,.011)],
-  ];
-
-  {
-    ctx.beginPath(); spline(skyline);
-    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
-    ctx.fillStyle = '#2c3d50'; ctx.fill();
-  }
-
-  // ══════════════════════════════════════════════════════
-  //  5. UPPER CATCHLIGHT BAND
-  //
-  //  Bounded shape: TOP edge = dune skyline, BOTTOM edge =
-  //  a parallel curve below it. Fills the upper portion of
-  //  the lit face. Tapers from left (widest) to crest (point).
-  //
-  //  At left edge (x=0):  top y=0.468, bottom y=0.556  (gap=8.8%)
-  //  At secondary hump:   top y=0.308, bottom y=0.348  (gap=4.0%)
-  //  Terminates at crest: (CX, CY)
-  // ══════════════════════════════════════════════════════
-  {
-    // Bottom edge of upper catchlight
-    const botEdge = [
-      [-W*.01,  H*.556 + b(5.0,.012)],
-      [ W*.07,  H*.514 + b(5.1,.011)],
-      [ W*.15,  H*.472 + b(5.2,.012)],
-      [ W*.23,  H*.432 + b(5.3,.011)],
-      [ W*.31,  H*.400 + b(5.4,.012)],
-      [ W*.39,  H*.378 + b(5.5,.011)],
-      [ W*.455, H*.355 + b(5.6,.012)], // near secondary hump
-      [ W*.51,  H*.340 + b(5.7,.011)],
-      [ W*.57,  H*.326 + b(5.8,.012)],
-      [ CX,      CY ],                  // converges to crest
-    ];
-
-    ctx.save();
-    // Clip to dune silhouette
-    ctx.beginPath(); spline(skyline);
-    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
-    ctx.clip();
-
-    ctx.beginPath();
-    spline(skyline.slice(0, 10)); // lit side only (up to crest)
-    ctx.lineTo(CX, CY);
-    spline([...botEdge].reverse());
-    ctx.closePath();
-
-    ctx.fillStyle = '#67808e';
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // ══════════════════════════════════════════════════════
-  //  6. LOWER CATCHLIGHT BAND
-  //
-  //  Second band below the upper one — slightly darker.
-  //  TOP edge = bottom edge of upper catchlight.
-  //  BOTTOM edge runs lower-parallel, terminates with
-  //  a smooth rounded tail at approx (60%, 44%).
-  //
-  //  At left edge:  top y=0.556, bottom y=0.648  (gap=9.2%)
-  //  Tapers to rounded point at ~(0.605, 0.435)
-  // ══════════════════════════════════════════════════════
-  {
-    // Top edge of lower band = bottom edge of upper band
-    const topEdge = [
-      [-W*.01,  H*.556 + b(5.0,.012)],
-      [ W*.07,  H*.514 + b(5.1,.011)],
-      [ W*.15,  H*.472 + b(5.2,.012)],
-      [ W*.23,  H*.432 + b(5.3,.011)],
-      [ W*.31,  H*.400 + b(5.4,.012)],
-      [ W*.39,  H*.378 + b(5.5,.011)],
-      [ W*.455, H*.355 + b(5.6,.012)],
-      [ W*.51,  H*.340 + b(5.7,.011)],
-      [ W*.57,  H*.326 + b(5.8,.012)],
-      [ W*.605, H*.380 + b(5.9,.012)], // curves DOWN here — the rounded turn
-      [ W*.590, H*.432 + b(6.0,.011)], // turning around the tail
-    ];
-
-    // Bottom edge of lower band
-    const botEdge2 = [
-      [-W*.01,  H*.648 + b(6.1,.011)],
-      [ W*.07,  H*.602 + b(6.2,.010)],
-      [ W*.15,  H*.560 + b(6.3,.011)],
-      [ W*.23,  H*.524 + b(6.4,.010)],
-      [ W*.31,  H*.494 + b(6.5,.011)],
-      [ W*.39,  H*.470 + b(6.6,.010)],
-      [ W*.455, H*.452 + b(6.7,.011)],
-      [ W*.51,  H*.440 + b(6.8,.010)],
-      [ W*.555, H*.434 + b(6.9,.011)],
-      [ W*.590, H*.432 + b(6.0,.011)], // meets at rounded tail
-    ];
-
-    ctx.save();
-    ctx.beginPath(); spline(skyline);
-    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
-    ctx.clip();
-
-    ctx.beginPath();
-    spline(topEdge);
-    spline([...botEdge2].reverse());
-    ctx.closePath();
-
-    ctx.fillStyle = '#54606e';
-    ctx.fill();
-    ctx.restore();
-  }
-
-  // ══════════════════════════════════════════════════════
-  //  7. SHADOW FACE
-  //  Very dark navy from crest rightward.
-  //  Left boundary = shadow-side of skyline (wave-hook shape).
-  // ══════════════════════════════════════════════════════
-  {
-    const shadowSide = skyline.slice(9); // from CX,CY onward
-    ctx.beginPath(); spline(shadowSide);
-    ctx.lineTo(W*1.02, H+2); ctx.lineTo(CX, H+2); ctx.closePath();
-    const g = ctx.createLinearGradient(CX, CY, W*.94, H*.60);
-    g.addColorStop(0,   '#141e2e');
-    g.addColorStop(0.5, '#0e1826');
-    g.addColorStop(1,   '#09101e');
-    ctx.fillStyle = g; ctx.fill();
-  }
-
-  // ══════════════════════════════════════════════════════
-  //  8. FOREGROUND MASS
-  //  Large smooth dark blob covering lower ~30%.
-  //  Top edge at y≈70–73%, sweeps gently across full width.
-  // ══════════════════════════════════════════════════════
-  {
-    const fg = [
-      [-W*.01,  H*.718 + b(8.0,.009)],
-      [ W*.10,  H*.702 + b(8.1,.008)],
-      [ W*.22,  H*.692 + b(8.2,.009)],
-      [ W*.36,  H*.698 + b(8.3,.008)],
-      [ W*.50,  H*.684 + b(8.4,.009)],
-      [ W*.65,  H*.690 + b(8.5,.008)],
-      [ W*.80,  H*.678 + b(8.6,.009)],
-      [ W*1.02, H*.686 + b(8.7,.008)],
-    ];
-    ctx.beginPath(); spline(fg);
-    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
-    const g = ctx.createLinearGradient(0, H*.69, 0, H);
-    g.addColorStop(0, '#0f1c2c'); g.addColorStop(.35, '#0b1422'); g.addColorStop(1, '#070d18');
-    ctx.fillStyle = g; ctx.fill();
-  }
-
-  // ══════════════════════════════════════════════════════
-  //  9. GROUND
-  // ══════════════════════════════════════════════════════
-  {
-    const gnd = [
-      [-W*.01,  H*.836 + b(9.0,.007)],
-      [ W*.28,  H*.824 + b(9.1,.006)],
-      [ W*.56,  H*.830 + b(9.2,.007)],
-      [ W*.82,  H*.820 + b(9.3,.006)],
-      [ W*1.02, H*.828 + b(9.4,.007)],
-    ];
-    ctx.beginPath(); spline(gnd);
-    ctx.lineTo(W*1.02, H+2); ctx.lineTo(-W*.01, H+2); ctx.closePath();
-    ctx.fillStyle = '#070d18'; ctx.fill();
-  }
-
-  requestAnimationFrame(draw);
-}
-requestAnimationFrame(draw);
-
-// ─── TIMER / COUNTDOWN ───────────────────────────────────
-const displayEl = document.getElementById('display');
-const hintEl    = document.getElementById('hint');
-const setterEl  = document.getElementById('setter');
-const minsEl    = document.getElementById('mins');
-const popupEl   = document.getElementById('popup');
-const dismissEl = document.getElementById('popup-dismiss');
-const btnCd     = document.getElementById('btn-cd');
-const btnSw     = document.getElementById('btn-sw');
-
-let mode = 'countdown';
-let cdEnd = 0, cdRunning = false, cdDone = false;
-let swStart = 0, swRunning = false, swElapsed = 0;
-
-function pad2(n){ return String(Math.floor(n)).padStart(2,'0'); }
-function fmtSecs(s){
-  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60), ss=Math.floor(s%60);
-  return h>0 ? `${pad2(h)} : ${pad2(m)} : ${pad2(ss)}` : `${pad2(m)} : ${pad2(ss)}`;
-}
-setInterval(()=>{
-  if(mode==='countdown' && cdRunning){
-    const rem=Math.max(0,(cdEnd-Date.now())/1000);
-    displayEl.textContent=fmtSecs(rem);
-    if(rem<=0 && !cdDone){ cdDone=true; cdRunning=false; displayEl.textContent='00 : 00'; displayEl.classList.add('done'); hintEl.textContent='click to reset'; setTimeout(()=>popupEl.classList.add('show'),700); }
-  }
-  if(mode==='stopwatch' && swRunning){ swElapsed=(Date.now()-swStart)/1000; displayEl.textContent=fmtSecs(swElapsed); }
-},250);
-
-btnCd.addEventListener('click',()=>{ if(mode==='countdown') return; mode='countdown'; btnCd.classList.add('active'); btnSw.classList.remove('active'); resetAll(); displayEl.textContent='—'; hintEl.textContent='click to set'; displayEl.classList.remove('stopwatch','active-time','done'); });
-btnSw.addEventListener('click',()=>{ if(mode==='stopwatch') return; mode='stopwatch'; btnSw.classList.add('active'); btnCd.classList.remove('active'); resetAll(); displayEl.textContent='—'; hintEl.textContent='click to start'; displayEl.classList.add('stopwatch'); displayEl.classList.remove('active-time','done'); });
-
-displayEl.addEventListener('click',()=>{
-  if(mode==='countdown'){
-    if(cdDone||cdRunning){ resetAll(); displayEl.textContent='—'; displayEl.classList.remove('active-time','done'); hintEl.textContent='click to set'; return; }
-    setterEl.classList.add('open'); displayEl.style.visibility='hidden'; hintEl.style.visibility='hidden'; minsEl.value=''; minsEl.focus();
+function updateTimerDisplay() {
+  const d = $('#timer-display');
+  let s, txt;
+  if(S.timerMode === 'free') {
+    s = timerState.freeElapsed;
+    const h = Math.floor(s/3600);
+    const m = Math.floor((s%3600)/60);
+    const sec = s%60;
+    txt = h > 0 ? `${pad(h)}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+    const fl = $('#timer-free-label');
+    if(s >= 60) {
+      const hrs = Math.floor(s/3600);
+      const mins = Math.floor((s%3600)/60);
+      fl.textContent = hrs > 0 ? `${hrs}h ${mins}m of focus` : `${mins}m of focus`;
+    } else fl.textContent = '';
+    updateRing(0, 0);
   } else {
-    if(!swRunning){ swStart=Date.now()-swElapsed*1000; swRunning=true; displayEl.classList.add('active-time'); hintEl.textContent='click to pause'; }
-    else { swRunning=false; displayEl.classList.remove('active-time'); hintEl.textContent='click to resume · hold to reset'; }
+    s = timerState.seconds;
+    const m = Math.floor(s/60);
+    const sec = s%60;
+    txt = `${pad(m)}:${pad(sec)}`;
+    const pct = timerState.totalSeconds > 0 ? 1 - s/timerState.totalSeconds : 1;
+    updateRing(pct, timerState.totalSeconds);
+  }
+  d.textContent = txt;
+}
+
+function pad(n){ return n.toString().padStart(2,'0'); }
+
+function updatePlayBtn() {
+  $('#play-pause-btn').textContent = timerState.running ? '⏸' : '▶';
+}
+
+function updateModeLabel() {
+  const l = $('#timer-mode-label');
+  if(S.timerMode === 'free') { l.textContent = 'FREE TIMER'; return; }
+  if(S.timerMode === 'break') { l.textContent = 'BREAK'; return; }
+  const phaseText = timerState.phase === 'work' ? 'FOCUS' : timerState.phase === 'short' ? 'SHORT BREAK' : 'LONG BREAK';
+  const cycleText = `SESSION ${timerState.cycle}`;
+  l.textContent = `${phaseText} · ${cycleText}`;
+  updateSessionDots();
+}
+
+function updateSessionDots() {
+  if(!S.showDots) { $('#session-dots').innerHTML=''; return; }
+  const dots = $('#session-dots');
+  dots.innerHTML = '';
+  if(S.timerMode !== 'pomodoro') return;
+  for(let i=0; i<4; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < timerState.session ? ' filled' : '');
+    dots.appendChild(d);
+  }
+}
+
+function setMode(mode) {
+  S.timerMode = mode;
+  timerState.phase = 'work';
+  timerState.session = 0;
+  $$('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+  const fl = $('#timer-free-label');
+  fl.textContent = mode === 'free' ? '' : '';
+  $('#session-dots').style.opacity = mode === 'pomodoro' ? '1' : '0';
+  resetTimer();
+  updateModeLabel();
+  save();
+}
+
+// ===== PROGRESS RING =====
+let ringR = 0;
+function updateRing(pct, total) {
+  const canvas = $('#timer-ring');
+  if(!canvas || total <= 0) { canvas.width = 0; canvas.height = 0; return; }
+  const timerEl = $('#timer-display');
+  const tw = timerEl.offsetWidth;
+  const th = timerEl.offsetHeight;
+  const dim = Math.max(tw, th) * 1.15 + 30;
+  canvas.width = dim; canvas.height = dim;
+  canvas.style.width = dim+'px'; canvas.style.height = dim+'px';
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0,0,dim,dim);
+  const r = dim/2 - 8;
+  const cx = dim/2, cy = dim/2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI*2);
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  const angle = -Math.PI/2;
+  const end = angle + pct * Math.PI * 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, angle, end);
+  ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  ctx.stroke();
+}
+
+// ===== THEMES =====
+let particleAnim = null;
+
+function applyTheme(key) {
+  S.theme = key;
+  const t = THEMES[key];
+  if(!t) return;
+  const bg = $('#bg-gradient');
+  bg.style.background = `
+    radial-gradient(ellipse at 20% 30%, ${t.g1}88 0%, transparent 55%),
+    radial-gradient(ellipse at 80% 70%, ${t.g2}66 0%, transparent 55%),
+    radial-gradient(ellipse at 50% 50%, ${t.g3}44 0%, transparent 70%),
+    linear-gradient(160deg, ${t.g4} 0%, ${t.g1}cc 40%, ${t.g3}ee 70%, ${t.g4}ff 100%)
+  `;
+  $('#bg-overlay').style.background = t.ov;
+  if(particleAnim) { clearInterval(particleAnim); particleAnim = null; }
+  startParticles(t.particles);
+  $$('.theme-chip').forEach(c => c.classList.toggle('active', c.dataset.theme === key));
+  save();
+}
+
+// ===== PARTICLE ENGINE =====
+const canvas = document.getElementById('bg-canvas');
+const ctx2 = canvas.getContext('2d');
+let particles = [];
+let particleType = 'none';
+let animFrame = null;
+
+function resizeCanvas() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function startParticles(type) {
+  particleType = type;
+  particles = [];
+  if(animFrame) cancelAnimationFrame(animFrame);
+  ctx2.clearRect(0,0,canvas.width,canvas.height);
+  if(type === 'none') return;
+  initParticles(type);
+  animateParticles();
+}
+
+function initParticles(type) {
+  const n = { rain:180, snow:120, sparks:60, leaves:40, dust:80, clouds:12, shimmer:100, waves:6, steam:20, fog:8 }[type] || 60;
+  for(let i=0; i<n; i++) particles.push(makeParticle(type, true));
+}
+
+function makeParticle(type, random) {
+  const W = canvas.width, H = canvas.height;
+  const y = random ? Math.random()*H : -20;
+  switch(type) {
+    case 'rain': return { x:Math.random()*W, y, vy:12+Math.random()*8, vx:-1-Math.random()*2, len:10+Math.random()*15, alpha:0.2+Math.random()*0.25, width:0.5+Math.random()*0.5 };
+    case 'snow': return { x:Math.random()*W, y, vy:0.5+Math.random()*1.2, vx:(Math.random()-0.5)*0.8, r:1+Math.random()*2.5, alpha:0.4+Math.random()*0.4, wobble:Math.random()*Math.PI*2, wobbleSpeed:0.02+Math.random()*0.02 };
+    case 'sparks': return { x:W/2+(Math.random()-0.5)*200, y:H, vy:-(2+Math.random()*5), vx:(Math.random()-0.5)*3, alpha:0.8, r:1+Math.random()*2, fade:0.01+Math.random()*0.02, color:`hsl(${20+Math.random()*30},100%,${60+Math.random()*30}%)` };
+    case 'leaves': return { x:Math.random()*W, y, vy:0.8+Math.random()*1.5, vx:(Math.random()-0.5)*2, r:3+Math.random()*4, alpha:0.5+Math.random()*0.4, rot:Math.random()*Math.PI*2, rotSpeed:(Math.random()-0.5)*0.06, color:`hsl(${15+Math.random()*30},${70+Math.random()*20}%,${35+Math.random()*25}%)` };
+    case 'dust': return { x:Math.random()*W, y:Math.random()*H, vy:-(0.1+Math.random()*0.3), vx:(Math.random()-0.5)*0.4, r:0.5+Math.random()*1.5, alpha:0.08+Math.random()*0.15, pulse:Math.random()*Math.PI*2, pulseSpeed:0.01+Math.random()*0.015 };
+    case 'clouds': return { x:random?Math.random()*W:-300, y:50+Math.random()*(H*0.4), vx:0.15+Math.random()*0.25, w:200+Math.random()*300, h:60+Math.random()*80, alpha:0.04+Math.random()*0.07 };
+    case 'shimmer': return { x:Math.random()*W, y:H*0.5+Math.random()*(H*0.5), vy:-(0.2+Math.random()*0.5), vx:(Math.random()-0.5)*0.5, alpha:0, maxAlpha:0.3+Math.random()*0.5, r:1+Math.random()*2, phase:Math.random()*Math.PI*2, speed:0.02+Math.random()*0.03 };
+    case 'waves': return { x:random?Math.random()*W:-50, y:H*0.85+Math.sin(Math.random()*Math.PI*2)*20, vx:0.5+Math.random()*1, amp:8+Math.random()*15, freq:0.02+Math.random()*0.01, phase:Math.random()*Math.PI*2, alpha:0.12+Math.random()*0.18, w:60+Math.random()*100, h:4+Math.random()*8 };
+    case 'steam': return { x:W*0.3+Math.random()*W*0.4, y:H*0.5+Math.random()*H*0.3, vy:-(0.4+Math.random()*0.8), vx:(Math.random()-0.5)*0.5, alpha:0, maxAlpha:0.08+Math.random()*0.1, r:4+Math.random()*8, phase:Math.random()*Math.PI*2, phaseSpeed:0.02, lifespan:120+Math.random()*80, age:random?Math.random()*200:0 };
+    case 'fog': return { x:random?Math.random()*W:-W*0.5, y:H*0.3+Math.random()*H*0.5, vx:0.1+Math.random()*0.2, w:W*0.4+Math.random()*W*0.4, h:H*0.15+Math.random()*H*0.15, alpha:0.03+Math.random()*0.05 };
+    default: return {};
+  }
+}
+
+function animateParticles() {
+  animFrame = requestAnimationFrame(animateParticles);
+  ctx2.clearRect(0,0,canvas.width,canvas.height);
+  const W=canvas.width, H=canvas.height;
+  const type = particleType;
+  particles = particles.filter(p => {
+    const alive = drawParticle(p, type, W, H);
+    return alive;
+  });
+  while(particles.length < ({ rain:180,snow:120,sparks:60,leaves:40,dust:80,clouds:12,shimmer:100,waves:6,steam:20,fog:8 }[type]||60)) {
+    particles.push(makeParticle(type, false));
+  }
+}
+
+function drawParticle(p, type, W, H) {
+  ctx2.save();
+  switch(type) {
+    case 'rain':
+      p.x += p.vx; p.y += p.vy;
+      if(p.y > H+20) return false;
+      ctx2.strokeStyle = `rgba(180,200,220,${p.alpha})`;
+      ctx2.lineWidth = p.width;
+      ctx2.beginPath();
+      ctx2.moveTo(p.x, p.y);
+      ctx2.lineTo(p.x + p.vx*2, p.y - p.len);
+      ctx2.stroke();
+      break;
+    case 'snow':
+      p.wobble += p.wobbleSpeed;
+      p.x += Math.sin(p.wobble)*0.5 + p.vx;
+      p.y += p.vy;
+      if(p.y > H+10) return false;
+      ctx2.fillStyle = `rgba(220,235,255,${p.alpha})`;
+      ctx2.beginPath();
+      ctx2.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+    case 'sparks':
+      p.x += p.vx; p.y += p.vy; p.vy += 0.05; p.alpha -= p.fade;
+      if(p.alpha <= 0 || p.y < 0) return false;
+      ctx2.fillStyle = p.color;
+      ctx2.globalAlpha = p.alpha;
+      ctx2.beginPath();
+      ctx2.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+    case 'leaves':
+      p.x += p.vx + Math.sin(p.rot)*0.5; p.y += p.vy; p.rot += p.rotSpeed;
+      if(p.y > H+20) return false;
+      ctx2.globalAlpha = p.alpha;
+      ctx2.fillStyle = p.color;
+      ctx2.translate(p.x, p.y); ctx2.rotate(p.rot);
+      ctx2.beginPath();
+      ctx2.ellipse(0, 0, p.r*1.5, p.r*0.7, 0, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+    case 'dust':
+      p.pulse += p.pulseSpeed;
+      p.x += p.vx; p.y += p.vy;
+      if(p.y < -10) p.y = H+10;
+      if(p.x < -10) p.x = W+10;
+      if(p.x > W+10) p.x = -10;
+      const da = p.alpha * (0.7 + Math.sin(p.pulse)*0.3);
+      ctx2.fillStyle = `rgba(220,190,140,${da})`;
+      ctx2.beginPath();
+      ctx2.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+    case 'clouds':
+      p.x += p.vx;
+      if(p.x > W + p.w) return false;
+      const grd = ctx2.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.w*0.5);
+      grd.addColorStop(0, `rgba(220,230,255,${p.alpha})`);
+      grd.addColorStop(1, 'rgba(220,230,255,0)');
+      ctx2.fillStyle = grd;
+      ctx2.beginPath();
+      ctx2.ellipse(p.x, p.y, p.w*0.5, p.h*0.5, 0, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+    case 'shimmer':
+      p.phase += p.speed;
+      p.alpha = p.maxAlpha * Math.max(0, Math.sin(p.phase));
+      p.x += p.vx; p.y += p.vy;
+      if(p.y < H*0.4) return false;
+      ctx2.fillStyle = `rgba(160,210,255,${p.alpha})`;
+      ctx2.beginPath();
+      ctx2.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+    case 'waves':
+      p.phase += 0.015;
+      p.x += p.vx;
+      if(p.x > W + p.w) return false;
+      const wy = p.y + Math.sin(p.phase)*p.amp;
+      const wg = ctx2.createLinearGradient(p.x, wy, p.x+p.w, wy);
+      wg.addColorStop(0,'rgba(180,220,255,0)');
+      wg.addColorStop(0.5,`rgba(180,220,255,${p.alpha})`);
+      wg.addColorStop(1,'rgba(180,220,255,0)');
+      ctx2.fillStyle = wg;
+      ctx2.beginPath();
+      ctx2.ellipse(p.x+p.w/2, wy, p.w/2, p.h/2, 0, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+    case 'steam':
+      p.age++;
+      if(p.age > p.lifespan) return false;
+      const ageRatio = p.age/p.lifespan;
+      p.x += p.vx + Math.sin(p.phase)*0.3; p.y += p.vy;
+      p.phase += p.phaseSpeed;
+      p.r += 0.05;
+      p.alpha = ageRatio < 0.2 ? (ageRatio/0.2)*p.maxAlpha : ageRatio > 0.7 ? ((1-ageRatio)/0.3)*p.maxAlpha : p.maxAlpha;
+      ctx2.fillStyle = `rgba(240,230,220,${p.alpha})`;
+      ctx2.beginPath();
+      ctx2.arc(p.x, p.y, p.r, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+    case 'fog':
+      p.x += p.vx;
+      if(p.x > W + p.w) return false;
+      const fg = ctx2.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.w*0.6);
+      fg.addColorStop(0, `rgba(200,220,200,${p.alpha})`);
+      fg.addColorStop(1, 'rgba(200,220,200,0)');
+      ctx2.fillStyle = fg;
+      ctx2.beginPath();
+      ctx2.ellipse(p.x, p.y, p.w*0.6, p.h*0.5, 0, 0, Math.PI*2);
+      ctx2.fill();
+      break;
+  }
+  ctx2.restore();
+  return true;
+}
+
+// ===== MUSIC =====
+const YT_IDS = [
+  { id:'PIBMuKXsvKE', start:1991 },
+  { id:'lTRiuFIWV54', start:0 },
+  { id:'CHFif_y2TyM', start:861 },
+];
+let ytReady = [false, false, false];
+let activeChannel = -1;
+let audioEnabled = false;
+
+function initYT() {
+  YT_IDS.forEach((yt, i) => {
+    const frame = $(`#yt-${i}`);
+    frame.src = `https://www.youtube-nocookie.com/embed/${yt.id}?enablejsapi=1&autoplay=0&loop=1&start=${yt.start}&mute=0&controls=0&playlist=${yt.id}`;
+  });
+}
+
+function playChannel(ch) {
+  if(!audioEnabled) {
+    audioEnabled = true;
+    $('#audio-prompt').classList.remove('visible');
+  }
+  if(activeChannel === ch) {
+    stopAllMusic();
+    return;
+  }
+  stopAllMusic();
+  activeChannel = ch;
+  S.musicChannel = ch;
+  $$('.music-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.ch)===ch));
+  const frame = $(`#yt-${ch}`);
+  try { frame.contentWindow.postMessage(JSON.stringify({event:'command',func:'playVideo'}),'*'); } catch(e){}
+  setVolume(S.volume);
+  save();
+}
+
+function stopAllMusic() {
+  YT_IDS.forEach((_,i) => {
+    try { $(`#yt-${i}`).contentWindow.postMessage(JSON.stringify({event:'command',func:'pauseVideo'}),'*'); } catch(e){}
+  });
+  activeChannel = -1;
+  S.musicChannel = -1;
+  $$('.music-btn').forEach(b => b.classList.remove('active'));
+  save();
+}
+
+function cycleMusic() {
+  if(!audioEnabled) { audioEnabled=true; $('#audio-prompt').classList.remove('visible'); }
+  const next = (activeChannel + 2) % 3;  // -1→0, 0→1, 1→2, 2→0
+  playChannel(next);
+}
+
+function setVolume(v) {
+  S.volume = v;
+  $('#volume-slider').value = v;
+  YT_IDS.forEach((_,i) => {
+    try { $(`#yt-${i}`).contentWindow.postMessage(JSON.stringify({event:'command',func:'setVolume',args:[v]}),'*'); } catch(e){}
+  });
+  save();
+}
+
+// ===== BELL SOUND =====
+function playBell() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 1.5);
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 2);
+  } catch(e){}
+}
+
+// ===== DRAG TIMER =====
+let drag = { active:false, startX:0, startY:0, origX:0, origY:0 };
+function initTimerDrag() {
+  const wrap = $('#timer-wrap');
+  wrap.addEventListener('mousedown', e => {
+    if(e.target.classList.contains('resize-btn')) return;
+    drag.active = true;
+    drag.startX = e.clientX; drag.startY = e.clientY;
+    const rect = wrap.getBoundingClientRect();
+    drag.origX = rect.left + rect.width/2;
+    drag.origY = rect.top + rect.height/2;
+    wrap.classList.add('dragging');
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if(!drag.active) return;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
+    const nx = drag.origX + dx;
+    const ny = drag.origY + dy;
+    positionTimer(nx, ny, true);
+  });
+  document.addEventListener('mouseup', () => {
+    if(!drag.active) return;
+    drag.active = false;
+    $('#timer-wrap').classList.remove('dragging');
+    const wrap = $('#timer-wrap');
+    const rect = wrap.getBoundingClientRect();
+    S.timerX = rect.left + rect.width/2;
+    S.timerY = rect.top + rect.height/2;
+    save();
+  });
+}
+
+function positionTimer(cx, cy, abs) {
+  const wrap = $('#timer-wrap');
+  if(abs) {
+    wrap.style.left = cx + 'px';
+    wrap.style.top = cy + 'px';
+    wrap.style.transform = 'translate(-50%,-50%)';
+  } else {
+    wrap.style.left = '50%';
+    wrap.style.top = '50%';
+    wrap.style.transform = 'translate(-50%,-50%)';
+  }
+}
+
+function resetTimerPosition() {
+  const wrap = $('#timer-wrap');
+  wrap.style.left = '50%';
+  wrap.style.top = '50%';
+  wrap.style.transform = 'translate(-50%,-50%)';
+  S.timerX = null; S.timerY = null;
+  save();
+}
+
+function applyTimerPosition() {
+  if(S.timerX && S.timerY) positionTimer(S.timerX, S.timerY, true);
+}
+
+function setTimerSize(sz) {
+  sz = Math.max(48, Math.min(240, sz));
+  S.timerSize = sz;
+  document.documentElement.style.setProperty('--timer-size', sz+'px');
+  save();
+}
+
+// ===== UI VISIBILITY =====
+let hideTimeout = null;
+let isHovering = false;
+
+function showUI() {
+  $('#bottom-ui').classList.add('visible');
+  clearTimeout(hideTimeout);
+  hideTimeout = setTimeout(() => {
+    if(!isHovering) hideUI();
+  }, 3000);
+}
+function hideUI() { if(!isHovering) $('#bottom-ui').classList.remove('visible'); }
+
+document.addEventListener('mousemove', () => {
+  showUI();
+  showCursor();
+  clearTimeout(cursorTimeout);
+  cursorTimeout = setTimeout(hideCursor, 3000);
+});
+document.addEventListener('mouseenter', showUI);
+
+// Panel hover keeps UI visible
+$('#bottom-ui').addEventListener('mouseenter', () => { isHovering=true; clearTimeout(hideTimeout); });
+$('#bottom-ui').addEventListener('mouseleave', () => { isHovering=false; showUI(); });
+
+// ===== CURSOR =====
+let cursorTimeout = null;
+function hideCursor() { document.body.classList.remove('cursor-visible'); }
+function showCursor() { document.body.classList.add('cursor-visible'); }
+
+// ===== ZEN MODE =====
+function toggleZen() {
+  S.zenMode = !S.zenMode;
+  document.body.classList.toggle('zen-mode', S.zenMode);
+  $('#zen-btn').classList.toggle('active', S.zenMode);
+  if(S.zenMode) {
+    closePanels();
+    $('#theme-picker').classList.remove('visible');
+  }
+  save();
+}
+
+// ===== PANELS =====
+function closePanels() {
+  $('#notepad-panel').classList.remove('open');
+  $('#todo-panel').classList.remove('open');
+  $('#settings-panel').classList.remove('open');
+  $('#notepad-btn').classList.remove('active');
+  $('#todo-btn').classList.remove('active');
+  $('#settings-btn').classList.remove('active');
+}
+
+function toggleNotepad() {
+  const open = $('#notepad-panel').classList.toggle('open');
+  $('#notepad-btn').classList.toggle('active', open);
+  if(open) { $('#todo-panel').classList.remove('open'); $('#todo-btn').classList.remove('active'); }
+}
+function toggleTodo() {
+  const open = $('#todo-panel').classList.toggle('open');
+  $('#todo-btn').classList.toggle('active', open);
+  if(open) { $('#notepad-panel').classList.remove('open'); $('#notepad-btn').classList.remove('active'); }
+}
+function toggleSettings() {
+  const open = $('#settings-panel').classList.toggle('open');
+  $('#settings-btn').classList.toggle('active', open);
+  if(open) { $('#theme-picker').classList.remove('visible'); }
+}
+function toggleThemePicker() {
+  const open = $('#theme-picker').classList.toggle('visible');
+  $('#theme-btn').classList.toggle('active', open);
+  if(open) $('#settings-panel').classList.remove('open');
+}
+
+// ===== NOTEPAD =====
+function initNotepad() {
+  const ta = $('#notepad-textarea');
+  ta.value = S.notepad || '';
+  updateWordCount();
+  ta.addEventListener('input', () => {
+    S.notepad = ta.value;
+    updateWordCount();
+    save();
+  });
+}
+function updateWordCount() {
+  const v = $('#notepad-textarea').value.trim();
+  const words = v ? v.split(/\s+/).length : 0;
+  $('#notepad-footer').textContent = words + (words===1?' word':' words');
+}
+
+// ===== TODO =====
+function initTodos() {
+  renderTodos();
+  const input = $('#todo-input');
+  $('#todo-add-btn').addEventListener('click', addTodo);
+  input.addEventListener('keydown', e => { if(e.key==='Enter') addTodo(); });
+  $('#todo-clear-done').addEventListener('click', () => {
+    S.todos = S.todos.filter(t => !t.done);
+    renderTodos(); save();
+  });
+}
+function addTodo() {
+  const input = $('#todo-input');
+  const text = input.value.trim();
+  if(!text) return;
+  S.todos.unshift({ id: Date.now(), text, done: false });
+  input.value = '';
+  renderTodos(); save();
+}
+function toggleTodoItem(id) {
+  const t = S.todos.find(t=>t.id===id);
+  if(t) { t.done = !t.done; renderTodos(); save(); }
+}
+function deleteTodoItem(id) {
+  S.todos = S.todos.filter(t=>t.id!==id);
+  renderTodos(); save();
+}
+function renderTodos() {
+  const list = $('#todo-list');
+  list.innerHTML = '';
+  const done = S.todos.filter(t=>t.done).length;
+  const total = S.todos.length;
+  S.todos.slice(0,20).forEach(t => {
+    const div = document.createElement('div');
+    div.className = 'todo-item' + (t.done?' done':'');
+    div.innerHTML = `
+      <div class="todo-check" onclick="toggleTodoItem(${t.id})">${t.done?'✓':''}</div>
+      <span class="todo-text">${escHtml(t.text)}</span>
+      <button class="todo-delete" onclick="deleteTodoItem(${t.id})">×</button>
+    `;
+    list.appendChild(div);
+  });
+  $('#todo-count').textContent = total > 0 ? `${done}/${total}` : '';
+}
+function escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+// ===== SETTINGS =====
+function initSettings() {
+  // Font picker
+  $$('.font-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      S.timerFont = btn.dataset.font;
+      applyTimerFont(S.timerFont);
+      $$('.font-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      save();
+    });
+  });
+  // Pomodoro intervals
+  ['work','short','long'].forEach(k => {
+    const el = $(`#set-${k}`);
+    el.value = k==='work' ? S.pomodoroWork : k==='short' ? S.pomodoroShort : S.pomodoroLong;
+    el.addEventListener('change', () => {
+      const v = Math.max(1, parseInt(el.value)||1);
+      el.value = v;
+      if(k==='work') S.pomodoroWork=v;
+      else if(k==='short') S.pomodoroShort=v;
+      else S.pomodoroLong=v;
+      if(!timerState.running) resetTimer();
+      save();
+    });
+  });
+  // Toggles
+  initToggle('tog-autostart', 'autoStart');
+  initToggle('tog-sound', 'soundOn');
+  initToggle('tog-dots', 'showDots', () => updateSessionDots());
+  // Buttons
+  $('#reset-pos-btn').addEventListener('click', resetTimerPosition);
+  $('#clear-notepad-btn').addEventListener('click', () => { S.notepad=''; $('#notepad-textarea').value=''; updateWordCount(); save(); showNotif('Notepad cleared'); });
+  $('#clear-todos-btn').addEventListener('click', () => { S.todos=[]; renderTodos(); save(); showNotif('Tasks cleared'); });
+  // Apply saved
+  applyTimerFont(S.timerFont);
+  const activeFont = $(`.font-btn[data-font="${S.timerFont}"]`);
+  if(activeFont) { $$('.font-btn').forEach(b=>b.classList.remove('active')); activeFont.classList.add('active'); }
+}
+
+function initToggle(id, key, cb) {
+  const el = $(`#${id}`);
+  if(S[key]) el.classList.add('on');
+  el.addEventListener('click', () => {
+    S[key] = !S[key];
+    el.classList.toggle('on', S[key]);
+    if(cb) cb();
+    save();
+  });
+}
+
+function applyTimerFont(font) {
+  const d = $('#timer-display');
+  d.className = '';
+  if(font==='default') d.className = '';
+  else if(font==='serif') d.classList.add('font-serif');
+  else if(font==='minimal') d.classList.add('font-minimal');
+  else if(font==='handwritten') d.classList.add('font-handwritten');
+  else if(font==='ghost') d.classList.add('font-ghost');
+  if(timerState.running) d.classList.add('running');
+}
+
+// ===== THEME PICKER =====
+function buildThemePicker() {
+  const picker = $('#theme-picker');
+  Object.entries(THEMES).forEach(([key, t]) => {
+    const chip = document.createElement('div');
+    chip.className = 'theme-chip' + (key===S.theme?' active':'');
+    chip.dataset.theme = key;
+    chip.innerHTML = `
+      <div class="theme-swatch"><div style="background:linear-gradient(135deg,${t.g1},${t.g2},${t.g3})"></div></div>
+      <span class="theme-chip-name">${t.name.split(' ').slice(-1)[0]}</span>
+    `;
+    chip.addEventListener('click', () => {
+      applyTheme(key);
+      $$('.theme-chip').forEach(c=>c.classList.toggle('active',c.dataset.theme===key));
+    });
+    picker.appendChild(chip);
+  });
+}
+
+// ===== NOTIFICATION =====
+let notifTimeout;
+function showNotif(msg) {
+  const n = $('#notification');
+  n.textContent = msg;
+  n.classList.add('show');
+  clearTimeout(notifTimeout);
+  notifTimeout = setTimeout(() => n.classList.remove('show'), 3000);
+}
+
+// ===== KEYBOARD =====
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName.toLowerCase();
+  if(tag === 'input' || tag === 'textarea') return;
+  switch(e.key) {
+    case ' ': e.preventDefault(); toggleTimer(); break;
+    case 'h': case 'H': toggleZen(); break;
+    case 'n': case 'N': if(!S.zenMode) toggleNotepad(); break;
+    case 't': case 'T': if(!S.zenMode) toggleTodo(); break;
+    case 'm': case 'M': cycleMusic(); break;
+    case 'Escape':
+      closePanels();
+      $('#theme-picker').classList.remove('visible');
+      $('#theme-btn').classList.remove('active');
+      if(S.zenMode) toggleZen();
+      break;
   }
 });
-let holdT;
-displayEl.addEventListener('mousedown',()=>{ if(mode!=='stopwatch') return; holdT=setTimeout(()=>{ swRunning=false; swElapsed=0; displayEl.textContent='—'; displayEl.classList.remove('active-time'); hintEl.textContent='click to start'; },800); });
-displayEl.addEventListener('mouseup',()=>clearTimeout(holdT));
 
-minsEl.addEventListener('keydown',e=>{
-  if(e.key==='Enter'){ const v=parseFloat(minsEl.value); closeInput(); if(v>0){ cdEnd=Date.now()+v*60*1000; cdRunning=true; cdDone=false; displayEl.textContent=fmtSecs(v*60); displayEl.classList.add('active-time'); hintEl.textContent='click to reset'; } }
-  if(e.key==='Escape') closeInput();
-});
-function closeInput(){ setterEl.classList.remove('open'); displayEl.style.visibility=''; hintEl.style.visibility=''; }
-function resetAll(){ cdRunning=false; cdDone=false; cdEnd=0; swRunning=false; swElapsed=0; popupEl.classList.remove('show'); closeInput(); }
-dismissEl.addEventListener('click',()=>{ popupEl.classList.remove('show'); resetAll(); displayEl.textContent='—'; displayEl.classList.remove('active-time','done'); hintEl.textContent='click to set'; });
+// ===== HELPERS =====
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return document.querySelectorAll(sel); }
 
-let idleT;
-document.addEventListener('mousemove',()=>{ document.body.style.cursor='default'; clearTimeout(idleT); idleT=setTimeout(()=>{ document.body.style.cursor='none'; },3000); });
+// ===== INIT =====
+function init() {
+  // Timer
+  timerState.phase = 'work';
+  timerState.seconds = S.pomodoroWork * 60;
+  timerState.totalSeconds = S.pomodoroWork * 60;
+  setMode(S.timerMode);
+  setTimerSize(S.timerSize);
+  applyTimerPosition();
+  updateTimerDisplay();
+  updateModeLabel();
+
+  // Theme
+  buildThemePicker();
+  applyTheme(S.theme);
+
+  // Music
+  initYT();
+  $('#volume-slider').value = S.volume;
+  $('#volume-slider').addEventListener('input', e => setVolume(parseInt(e.target.value)));
+
+  // Music buttons
+  $$('.music-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if(!audioEnabled && activeChannel === -1) {
+        $('#audio-prompt').classList.add('visible');
+        setTimeout(()=>$('#audio-prompt').classList.remove('visible'),3000);
+      }
+      playChannel(parseInt(btn.dataset.ch));
+    });
+  });
+
+  // Timer controls
+  $('#play-pause-btn').addEventListener('click', toggleTimer);
+  $('#reset-btn').addEventListener('click', () => { timerState.phase='work'; timerState.session=0; resetTimer(); updateModeLabel(); });
+
+  // Mode buttons
+  $$('.mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+  });
+
+  // Panel buttons
+  $('#notepad-btn').addEventListener('click', () => { if(!S.zenMode) toggleNotepad(); });
+  $('#todo-btn').addEventListener('click', () => { if(!S.zenMode) toggleTodo(); });
+  $('#theme-btn').addEventListener('click', () => { if(!S.zenMode) toggleThemePicker(); });
+  $('#settings-btn').addEventListener('click', () => { if(!S.zenMode) toggleSettings(); });
+  $('#zen-btn').addEventListener('click', toggleZen);
+  $('#notepad-close').addEventListener('click', toggleNotepad);
+  $('#todo-close').addEventListener('click', toggleTodo);
+  $('#settings-close').addEventListener('click', toggleSettings);
+
+  // Resize btns
+  $('#size-up').addEventListener('click', e => { e.stopPropagation(); setTimerSize(S.timerSize+16); });
+  $('#size-down').addEventListener('click', e => { e.stopPropagation(); setTimerSize(S.timerSize-16); });
+
+  // Scroll to resize
+  $('#timer-wrap').addEventListener('wheel', e => {
+    e.preventDefault();
+    setTimerSize(S.timerSize + (e.deltaY < 0 ? 10 : -10));
+  }, { passive:false });
+
+  // Drag
+  initTimerDrag();
+
+  // Notepad & Todos
+  initNotepad();
+  initTodos();
+
+  // Settings
+  initSettings();
+
+  // Zen mode restore
+  if(S.zenMode) document.body.classList.add('zen-mode');
+
+  // Initial UI show
+  setTimeout(showUI, 800);
+
+  // Shortcuts hint (show briefly on load)
+  setTimeout(() => {
+    $('#shortcuts-hint').classList.add('visible');
+    setTimeout(() => $('#shortcuts-hint').classList.remove('visible'), 5000);
+  }, 2000);
+
+  // Audio prompt
+  setTimeout(() => {
+    if(!audioEnabled) {
+      $('#audio-prompt').classList.add('visible');
+      setTimeout(() => $('#audio-prompt').classList.remove('visible'), 4000);
+    }
+  }, 1500);
+}
+
+document.addEventListener('DOMContentLoaded', init);
 </script>
 </body>
 </html>
